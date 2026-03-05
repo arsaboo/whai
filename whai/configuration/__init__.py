@@ -14,6 +14,7 @@ from whai.configuration.roles import (
 from whai.configuration.user_config import (
     InvalidProviderConfigError,
     LLMConfig,
+    MCPPrefsConfig,
     MissingConfigError,
     ProviderConfig,
     RolesConfig,
@@ -38,6 +39,7 @@ __all__ = [
     "WhaiConfig",
     "LLMConfig",
     "RolesConfig",
+    "MCPPrefsConfig",
     "ProviderConfig",
     "InvalidProviderConfigError",
     "MissingConfigError",

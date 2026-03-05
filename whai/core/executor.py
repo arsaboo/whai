@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 
 
 def run_conversation_loop(
-    llm_provider: LLMProvider, messages: List[dict], timeout: int, command_string: Optional[str] = None, target_pane: Optional[str] = None
+    llm_provider: LLMProvider, messages: List[dict], timeout: int, command_string: Optional[str] = None, target_pane: Optional[str] = None, mcp_enabled: bool = True
 ) -> None:
     """
     Run the main conversation loop with the LLM.
@@ -29,6 +29,7 @@ def run_conversation_loop(
         timeout: Command timeout in seconds.
         command_string: Optional full command string for logging (e.g., "whai -vv 'query'").
         target_pane: Optional tmux pane to execute commands in (for remote pane targeting).
+        mcp_enabled: Whether MCP tools are enabled for this run.
     """
     # Import target functions if we have a target pane
     if target_pane is not None:
@@ -42,42 +43,41 @@ def run_conversation_loop(
         session_logger.log_command(command_string)
     
     # Initialize MCP manager if enabled
-    # Try to reuse the provider's MCP manager if it exists, otherwise create a new one
     from whai.mcp.manager import MCPManager
     from whai.mcp.executor import handle_mcp_tool_call_sync
     
     mcp_manager = None
     mcp_loop = None
     
-    # Create a persistent event loop for MCP operations to keep connections alive
-    if hasattr(llm_provider, "_mcp_manager") and llm_provider._mcp_manager is not None:
-        mcp_manager = llm_provider._mcp_manager
-        logger.debug("Reusing LLM provider's MCP manager instance")
+    if mcp_enabled:
+        # Try to reuse the provider's MCP manager if it exists, otherwise create a new one
+        if hasattr(llm_provider, "_mcp_manager") and llm_provider._mcp_manager is not None:
+            mcp_manager = llm_provider._mcp_manager
+            logger.debug("Reusing LLM provider's MCP manager instance")
+        else:
+            mcp_manager = MCPManager()
+            llm_provider._mcp_manager = mcp_manager
+        
+        if mcp_manager.is_enabled():
+            mcp_loop = asyncio.new_event_loop()
+            try:
+                if not mcp_manager._initialized:
+                    errors = mcp_loop.run_until_complete(mcp_manager.initialize())
+                    
+                    if errors:
+                        ui.error("MCP server initialization failed:")
+                        for server_name, error_msg in errors:
+                            ui.error(error_msg)
+                        ui.error("\nPlease fix the errors in your mcp.json configuration and try again.")
+                        mcp_loop.close()
+                        sys.exit(1)
+            except Exception as e:
+                logger.exception("Failed to initialize MCP manager: %s", e)
+                mcp_loop.close()
+                mcp_loop = None
+                mcp_manager = None
     else:
-        mcp_manager = MCPManager()
-        # Store on provider so _get_mcp_tools() can reuse it
-        llm_provider._mcp_manager = mcp_manager
-    
-    if mcp_manager.is_enabled():
-        # Create a persistent event loop for MCP operations to keep connections alive
-        # We use a separate loop to avoid interfering with any existing event loop
-        mcp_loop = asyncio.new_event_loop()
-        try:
-            if not mcp_manager._initialized:
-                errors = mcp_loop.run_until_complete(mcp_manager.initialize())
-                
-                if errors:
-                    ui.error("MCP server initialization failed:")
-                    for server_name, error_msg in errors:
-                        ui.error(error_msg)
-                    ui.error("\nPlease fix the errors in your mcp.json configuration and try again.")
-                    mcp_loop.close()
-                    sys.exit(1)
-        except Exception as e:
-            logger.exception("Failed to initialize MCP manager: %s", e)
-            mcp_loop.close()
-            mcp_loop = None
-            mcp_manager = None
+        logger.info("MCP disabled for this run")
     
     loop_iteration = 0
     try:

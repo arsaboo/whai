@@ -838,17 +838,34 @@ class RolesConfig:
 
 
 @dataclass
+class MCPPrefsConfig:
+    """User preferences for MCP (Model Context Protocol) support."""
+
+    enabled: bool = True
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for TOML serialization."""
+        return {"enabled": self.enabled}
+
+
+@dataclass
 class WhaiConfig:
     """Main whai configuration."""
 
     llm: LLMConfig
     roles: RolesConfig
+    mcp: MCPPrefsConfig = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.mcp is None:
+            self.mcp = MCPPrefsConfig()
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for TOML serialization."""
         return {
             "llm": self.llm.to_dict(),
             "roles": self.roles.to_dict(),
+            "mcp": self.mcp.to_dict(),
         }
 
     @classmethod
@@ -856,12 +873,14 @@ class WhaiConfig:
         """Create WhaiConfig from dictionary."""
         llm_data = data.get("llm", {})
         roles_data = data.get("roles", {})
+        mcp_data = data.get("mcp", {})
 
         return cls(
             llm=LLMConfig.from_dict(llm_data),
             roles=RolesConfig(
                 default_role=roles_data.get("default_role", DEFAULT_ROLE_NAME)
             ),
+            mcp=MCPPrefsConfig(enabled=mcp_data.get("enabled", True)),
         )
 
     @classmethod
@@ -943,7 +962,19 @@ def load_config(path: Optional[Path] = None) -> WhaiConfig:
         path = config_file
 
     logger.debug("Configuration loaded from %s", path, extra={"category": "config"})
-    return WhaiConfig.from_file(path)
+    config = WhaiConfig.from_file(path)
+
+    # Self-healing: re-save if the file is missing any expected top-level sections.
+    # This covers new sections added to the schema (e.g. [mcp]) without needing
+    # explicit migration code for each one.
+    with open(path, "rb") as f:
+        raw = tomllib.load(f)
+    missing = config.to_dict().keys() - raw.keys()
+    if missing:
+        logger.info("Config missing sections %s, updating %s", sorted(missing), path)
+        config.to_file(path)
+
+    return config
 
 
 def save_config(config: WhaiConfig, path: Optional[Path] = None) -> None:

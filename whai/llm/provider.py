@@ -90,7 +90,7 @@ class LLMProvider:
         # do not support it and should omit it entirely by default.
         self.temperature = temperature
 
-        # MCP manager (lazy initialization)
+        # MCP manager (set by executor when MCP is enabled)
         self._mcp_manager = None
 
         # Set API keys for LiteLLM
@@ -437,39 +437,26 @@ class LLMProvider:
 
     def _get_mcp_tools(self, mcp_loop: Optional[asyncio.AbstractEventLoop] = None) -> List[Dict[str, Any]]:
         """
-        Get MCP tools if MCP is enabled.
+        Get MCP tools from the manager set up by the executor.
 
         Args:
-            mcp_loop: Optional event loop to use for MCP operations. If provided,
-                     uses this loop instead of creating a new one. This is important
-                     for maintaining connection state across event loops.
+            mcp_loop: Event loop for MCP operations. Required to maintain
+                     connection state across calls.
 
         Returns:
-            List of MCP tool definitions in OpenAI function format, or empty list if MCP not enabled.
-        
+            List of MCP tool definitions in OpenAI function format, or empty list.
+
         Raises:
             RuntimeError: If MCP server initialization or tool listing fails.
         """
-        if self._mcp_manager is None:
-            from whai.mcp.manager import MCPManager
-            self._mcp_manager = MCPManager()
+        if self._mcp_manager is None or mcp_loop is None or mcp_loop.is_closed():
+            return []
 
         if not self._mcp_manager.is_enabled():
             return []
 
-        # Only get MCP tools if we have a persistent event loop
-        # Without a loop, we can't maintain connections, so skip MCP tools
-        # This prevents expensive initialization in tests that don't need MCP
-        if mcp_loop is None or mcp_loop.is_closed():
-            logger.debug(
-                "Skipping MCP tools: no persistent event loop available. "
-                "MCP tools require a persistent loop to maintain connections."
-            )
-            return []
-
-        # Use the provided persistent loop to get tools
         mcp_tools = mcp_loop.run_until_complete(self._mcp_manager.get_all_tools())
-        
+
         if mcp_tools:
             logger.debug("Including %d MCP tools in LLM request", len(mcp_tools))
         return mcp_tools

@@ -55,6 +55,8 @@ filterwarnings = [
     "ignore:The `dict` method is deprecated.*:pydantic.PydanticDeprecatedSince20",
     "ignore:Accessing the 'model_fields' attribute.*:pydantic.PydanticDeprecatedSince211",
     "ignore:Accessing the 'model_computed_fields' attribute.*:pydantic.PydanticDeprecatedSince211",
+    # LiteLLM uses asyncio.iscoroutinefunction (deprecated in 3.14, removed in 3.16)
+    "ignore:.*asyncio.iscoroutinefunction.*:DeprecationWarning",
 ]
 
 [[tool.uv.index]]

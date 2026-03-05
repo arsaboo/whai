@@ -1,6 +1,7 @@
 """Integration tests for MCP support using real MCP servers."""
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import nest_asyncio2
@@ -84,55 +85,69 @@ class TestMCPIntegration:
             await manager.close_all()
 
     async def test_mcp_executor_integration(self, mcp_server_time):
-        """Test MCP executor integration function."""
+        """Test MCP executor integration function (sync handler with non-running loop)."""
         from whai.mcp.executor import handle_mcp_tool_call_sync
         from whai.mcp.manager import MCPManager
 
+        def run_in_thread():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                manager = MCPManager()
+                loop.run_until_complete(manager.initialize())
+                try:
+                    tools = loop.run_until_complete(manager.get_all_tools())
+                    assert len(tools) > 0
+                    tool_call = {
+                        "id": "call_123",
+                        "name": tools[0]["function"]["name"],
+                        "arguments": {"timezone": "UTC"},
+                    }
+                    return handle_mcp_tool_call_sync(tool_call, manager, loop=loop)
+                finally:
+                    loop.run_until_complete(manager.close_all())
+            finally:
+                loop.close()
+
         loop = asyncio.get_event_loop()
-        manager = MCPManager()
-        await manager.initialize()
-        try:
-            tools = await manager.get_all_tools()
-            assert len(tools) > 0
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            result = await loop.run_in_executor(pool, run_in_thread)
 
-            tool_call = {
-                "id": "call_123",
-                "name": tools[0]["function"]["name"],
-                "arguments": {"timezone": "UTC"},
-            }
-
-            result = handle_mcp_tool_call_sync(tool_call, manager, loop=loop)
-            
-            assert "tool_call_id" in result
-            assert "output" in result
-            assert result["tool_call_id"] == "call_123"
-            assert "error" not in result["output"].lower()
-        finally:
-            await manager.close_all()
+        assert "tool_call_id" in result
+        assert "output" in result
+        assert result["tool_call_id"] == "call_123"
+        assert "error" not in result["output"].lower()
 
     async def test_mcp_error_handling(self, mcp_server_time):
-        """Test error handling for invalid MCP tool calls."""
+        """Test error handling for invalid MCP tool calls (sync handler with non-running loop)."""
         from whai.mcp.executor import handle_mcp_tool_call_sync
         from whai.mcp.manager import MCPManager
 
+        def run_in_thread():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                manager = MCPManager()
+                loop.run_until_complete(manager.initialize())
+                try:
+                    tool_call = {
+                        "id": "call_123",
+                        "name": "mcp_invalid-server_invalid-tool",
+                        "arguments": {},
+                    }
+                    return handle_mcp_tool_call_sync(tool_call, manager, loop=loop)
+                finally:
+                    loop.run_until_complete(manager.close_all())
+            finally:
+                loop.close()
+
         loop = asyncio.get_event_loop()
-        manager = MCPManager()
-        await manager.initialize()
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            result = await loop.run_in_executor(pool, run_in_thread)
 
-        try:
-            tool_call = {
-                "id": "call_123",
-                "name": "mcp_invalid-server_invalid-tool",
-                "arguments": {},
-            }
-
-            result = handle_mcp_tool_call_sync(tool_call, manager, loop=loop)
-            
-            assert "tool_call_id" in result
-            assert "output" in result
-            assert "error" in result["output"].lower() or "failed" in result["output"].lower()
-        finally:
-            await manager.close_all()
+        assert "tool_call_id" in result
+        assert "output" in result
+        assert "error" in result["output"].lower() or "failed" in result["output"].lower()
 
     @pytest.mark.integration
     @pytest.mark.api

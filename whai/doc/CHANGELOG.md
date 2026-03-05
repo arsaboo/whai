@@ -9,6 +9,10 @@ When ready to publish, change to version header: `## vX.Y.Z` (where X.Y.Z is you
 
 ## In Progress
 
+[2026-03-05] [test] [performance]: optimize MCP test fixture with session-scoped uvx validation; suite 38% faster (17.7s → 11s)
+[2026-03-05] [test] [coverage]: add 18 behavioral tests for parse_tool_calls, handle_streaming_response, and handle_complete_response
+[2026-03-05] [fix] [test]: fix 41 failing integration tests caused by mock_litellm_module corrupting sys.modules and MCP SDK capturing Click's fake stderr
+[2026-03-05] [test] [audit]: remove 15 implementation-detail and no-op tests, replace with behavioral equivalents; move test_session_context to integration
 [2026-03-05] [fix] [mcp]: fix MCP config isolation in tests by using module-level import for get_config_dir, preventing real MCP servers from starting during unrelated tests
 [2026-03-05] [docs] [general]: update README (ToC, MCP core feature) and DEV.md (Python version references to match noxfile 3.10-3.14)
 [2025-12-01] [fix] [mcp]: add graceful error handling for MCP server initialization and tool listing failures with user-friendly messages

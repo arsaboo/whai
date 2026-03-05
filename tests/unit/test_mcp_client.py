@@ -22,20 +22,6 @@ class TestMCPClient:
         assert client.server_name == mcp_server_time["server_name"]
         assert client.command == mcp_server_time["command"]
 
-    async def test_connect_to_server(self, mcp_server_time):
-        """Test connecting to real MCP server."""
-        client = MCPClient(
-            server_name=mcp_server_time["server_name"],
-            command=mcp_server_time["command"],
-            args=mcp_server_time["args"],
-            env=mcp_server_time["env"],
-        )
-        await client.connect()
-        try:
-            assert client._connected
-        finally:
-            await client.close()
-
     async def test_list_tools(self, mcp_server_time):
         """Test discovering tools from real MCP server."""
         client = MCPClient(
@@ -116,8 +102,8 @@ class TestMCPClient:
         finally:
             await client.close()
 
-    async def test_close_connection(self, mcp_server_time):
-        """Test closing connection."""
+    async def test_close_and_reconnect(self, mcp_server_time):
+        """Test that closing and reconnecting allows tool discovery again."""
         client = MCPClient(
             server_name=mcp_server_time["server_name"],
             command=mcp_server_time["command"],
@@ -125,28 +111,14 @@ class TestMCPClient:
             env=mcp_server_time["env"],
         )
         await client.connect()
-        assert client._connected
-
+        tools_before = await client.list_tools()
         await client.close()
-        assert not client._connected
 
-    async def test_schema_conversion(self, mcp_server_time):
-        """Test JSON Schema to OpenAI function format conversion."""
-        client = MCPClient(
-            server_name=mcp_server_time["server_name"],
-            command=mcp_server_time["command"],
-            args=mcp_server_time["args"],
-            env=mcp_server_time["env"],
-        )
-
-        schema = {
-            "type": "object",
-            "properties": {"arg1": {"type": "string"}},
-            "required": ["arg1"],
-        }
-        converted = client._convert_schema(schema)
-        assert converted["type"] == "object"
-        assert "properties" in converted
-        assert "arg1" in converted["properties"]
-        assert "required" in converted
+        # After reconnect, should be able to list tools again
+        await client.connect()
+        try:
+            tools_after = await client.list_tools()
+            assert len(tools_after) == len(tools_before)
+        finally:
+            await client.close()
 

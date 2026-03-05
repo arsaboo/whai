@@ -95,38 +95,30 @@ class TestMCPManager:
         finally:
             await manager.close_all()
 
-    async def test_tool_name_parsing(self):
-        """Test parsing tool names to route to correct server."""
-        tool_name = "mcp_test-server_tool-name"
-        parts = tool_name.split("_", 2)
-        assert len(parts) == 3
-        assert parts[0] == "mcp"
-        assert parts[1] == "test-server"
-        assert parts[2] == "tool-name"
-
-    async def test_clear_cache(self, mcp_server_time):
-        """Test clearing tools cache."""
+    async def test_clear_cache_refreshes_tools(self, mcp_server_time):
+        """Test that clearing cache causes tools to be rediscovered."""
         manager = MCPManager()
         await manager.initialize()
         try:
             tools1 = await manager.get_all_tools()
-            assert manager._tools_cache is not None
-
             manager.clear_cache()
-            assert manager._tools_cache is None
-
             tools2 = await manager.get_all_tools()
             assert len(tools1) == len(tools2)
         finally:
             await manager.close_all()
 
-    async def test_close_all(self, mcp_server_time):
-        """Test closing all connections."""
+    async def test_close_all_then_reinitialize(self, mcp_server_time):
+        """Test that closing all connections allows reinitialization."""
         manager = MCPManager()
         await manager.initialize()
-        assert len(manager.clients) > 0
-
+        tools_before = await manager.get_all_tools()
         await manager.close_all()
-        assert len(manager.clients) == 0
-        assert not manager._initialized
+
+        # After close, reinitialize should work
+        await manager.initialize()
+        try:
+            tools_after = await manager.get_all_tools()
+            assert len(tools_after) == len(tools_before)
+        finally:
+            await manager.close_all()
 

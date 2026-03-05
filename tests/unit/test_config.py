@@ -47,9 +47,6 @@ def test_get_config_dir_unix():
         assert config_dir == Path("/home/test/.config") / "whai"
 
 
-# Removed test_get_default_config - no longer needed as default config is not part of main codebase
-
-
 def test_load_config_missing_raises_error(tmp_path, monkeypatch):
     """Test that load_config raises MissingConfigError if config doesn't exist."""
     # Use a temporary directory as the config directory

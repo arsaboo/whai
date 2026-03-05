@@ -383,8 +383,6 @@ To disable MCP persistently, change in `config.toml`:
 enabled = false
 ```
 
-If a server fails to start (e.g., missing script file or invalid command), `whai` will display clear error messages and exit gracefully, helping you fix configuration issues.
-
 ## Key Features
 
 ### Roles

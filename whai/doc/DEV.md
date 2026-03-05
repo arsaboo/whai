@@ -11,6 +11,10 @@
 - `configuration/config_wizard.py` - Interactive setup wizard
 - `llm/provider.py` - LLM wrapper (LiteLLM), API calls, streaming
 - `llm/streaming.py` - Stream response parsing (text chunks, tool calls)
+- `mcp/config.py` - MCP server configuration (dataclass-based, JSON)
+- `mcp/client.py` - MCP client for connecting to individual servers
+- `mcp/manager.py` - MCP manager for multiple servers, tool aggregation
+- `mcp/executor.py` - MCP tool call handling for executor integration
 - `context/capture.py` - Context capture coordinator (tmux → session → history)
 - `context/tmux.py` - Tmux scrollback capture
 - `cli/target.py` - Tmux target pane capture and command execution
@@ -27,7 +31,13 @@
 2. `main()` loads config (`configuration/user_config.py`), resolves role, captures context (`context/capture.py`)
 3. Initializes LLM provider (`llm/provider.py`), builds messages with system prompt + role + context
 4. Calls `core/executor.py:run_conversation_loop()`
-5. Loop: LLM responds → extracts tool calls → `interaction/approval.py` for approval → `interaction/execution.py` executes → results fed back → repeat until done
+5. Loop: LLM responds → extracts tool calls → routes to `execute_shell` (with approval) or MCP tools → `interaction/execution.py` executes shell commands, `mcp/executor.py` handles MCP tools → results fed back → repeat until done
+
+**MCP Integration**:
+- MCP manager initialized at start of conversation loop (if `mcp.json` exists)
+- MCP tools discovered and combined with `execute_shell` tool in LLM provider
+- Tool calls prefixed with `mcp_` are routed to MCP manager
+- MCP connections cleaned up at end of conversation loop
 
 ## uv venv
 
@@ -88,11 +98,11 @@ uv run pytest -m api
 
 ### Testing across multiple Python versions (recommended)
 
-Use `nox` to test against Python 3.8, 3.9, 3.10, 3.11, 3.12, and 3.13:
+Use `nox` to test against Python 3.10, 3.11, 3.12, 3.13, and 3.14:
 First time setup:
 ```bash
 # One-time setup: Install Python versions with uv
-uv python install 3.10 3.11 3.12 3.13
+uv python install 3.10 3.11 3.12 3.13 3.14
 
 # Install nox
 uv tool install "nox[uv]"
@@ -181,7 +191,7 @@ git push origin "v$ver"
 **Important**: Use `git push origin "v$ver"` to push the specific tag, NOT `git push --tags`. The `--tags` flag pushes all tags, and if a tag already exists on the remote, GitHub won't recognize it as a new tag push event and won't trigger the workflow.
 
 That's it! GitHub Actions will automatically:
-- Run tests across Python 3.10, 3.11, 3.12, 3.13
+- Run tests across Python 3.10, 3.11, 3.12, 3.13, 3.14
 - Validate that the tag matches the version in `pyproject.toml`
 - Build the package
 - Publish to TestPyPI
@@ -233,7 +243,7 @@ Before your first real release, you can test the entire pipeline without actuall
 6. Click "Run workflow"
 
 This will:
-- Run all tests across Python 3.10, 3.11, 3.12, 3.13
+- Run all tests across Python 3.10, 3.11, 3.12, 3.13, 3.14
 - Build the package
 - Verify the built package locally (install and run smoke tests)
 - Skip all publishing steps (TestPyPI, PyPI, GitHub Release)

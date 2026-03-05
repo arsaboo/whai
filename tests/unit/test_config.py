@@ -47,9 +47,6 @@ def test_get_config_dir_unix():
         assert config_dir == Path("/home/test/.config") / "whai"
 
 
-# Removed test_get_default_config - no longer needed as default config is not part of main codebase
-
-
 def test_load_config_missing_raises_error(tmp_path, monkeypatch):
     """Test that load_config raises MissingConfigError if config doesn't exist."""
     # Use a temporary directory as the config directory
@@ -522,5 +519,63 @@ def test_get_config_path(tmp_path, monkeypatch):
 
     config_path = config.get_config_path()
     assert config_path == tmp_path / "config.toml"
+
+
+# ============================================================================
+# MCPPrefsConfig tests
+# ============================================================================
+
+
+def test_mcp_prefs_defaults():
+    """MCPPrefsConfig defaults to enabled=True."""
+    from whai.configuration.user_config import MCPPrefsConfig
+
+    prefs = MCPPrefsConfig()
+    assert prefs.enabled is True
+
+
+def test_mcp_prefs_disabled():
+    """MCPPrefsConfig can be set to disabled."""
+    from whai.configuration.user_config import MCPPrefsConfig
+
+    prefs = MCPPrefsConfig(enabled=False)
+    assert prefs.enabled is False
+
+
+def test_whai_config_mcp_defaults():
+    """WhaiConfig defaults to MCP enabled when [mcp] section is absent."""
+    from whai.configuration.user_config import LLMConfig, RolesConfig, WhaiConfig
+
+    whai_cfg = WhaiConfig.from_dict({
+        "llm": {"default_provider": "openai", "openai": {"api_key": "k", "default_model": "m"}},
+        "roles": {},
+    })
+    assert whai_cfg.mcp.enabled is True
+
+
+def test_whai_config_mcp_disabled_from_dict():
+    """WhaiConfig reads [mcp] enabled=false from config dict."""
+    from whai.configuration.user_config import WhaiConfig
+
+    whai_cfg = WhaiConfig.from_dict({
+        "llm": {"default_provider": "openai", "openai": {"api_key": "k", "default_model": "m"}},
+        "roles": {},
+        "mcp": {"enabled": False},
+    })
+    assert whai_cfg.mcp.enabled is False
+
+
+def test_whai_config_mcp_to_dict_always_present():
+    """to_dict always includes the [mcp] section."""
+    from whai.configuration.user_config import LLMConfig, MCPPrefsConfig, RolesConfig, WhaiConfig
+
+    for enabled in (True, False):
+        whai_cfg = WhaiConfig(
+            llm=LLMConfig(default_provider=None, providers={}),
+            roles=RolesConfig(),
+            mcp=MCPPrefsConfig(enabled=enabled),
+        )
+        d = whai_cfg.to_dict()
+        assert d["mcp"] == {"enabled": enabled}
 
 

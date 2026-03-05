@@ -1,16 +1,13 @@
 """Tests for whai shell command."""
 
 import os
-import subprocess
-import sys
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
 
-from whai.cli.main import app, shell_command
+from whai.cli.main import app
 from whai.shell.session import launch_shell_session
 
 runner = CliRunner()
@@ -118,51 +115,6 @@ def test_shell_command_handles_launch_failure(tmp_path):
 
 
 
-def test_shell_command_invoked_via_subprocess(tmp_path):
-    """Test `whai shell` via actual subprocess (e2e)."""
-    # Skip in CI environments where there's no TTY (subprocess will hang)
-    # GitHub Actions sets CI=true, and we also check for GITHUB_ACTIONS
-    if os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS"):
-        pytest.skip("Skipping subprocess test in CI environment (no TTY)")
-    
-    env = dict(os.environ)
-    env["WHAI_TEST_MODE"] = "1"
-    
-    # Add mocks to PYTHONPATH
-    project_root = Path(__file__).resolve().parents[1]
-    mocks_dir = project_root / "tests" / "mocks"
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = str(mocks_dir) + (os.pathsep + existing if existing else "")
-    
-    # Redirect cache
-    if os.name == "nt":
-        env["LOCALAPPDATA"] = str(tmp_path)
-    else:
-        env["XDG_CACHE_HOME"] = str(tmp_path)
-    
-    # Mock the shell launch to avoid actually opening an interactive shell
-    with patch("whai.shell.session._launch_unix") as mock_unix, patch(
-        "whai.shell.session._launch_windows"
-    ) as mock_windows:
-        if os.name == "nt":
-            mock_windows.return_value = 0
-        else:
-            mock_unix.return_value = 0
-        
-        cmd = [sys.executable, "-m", "whai", "shell"]
-        proc = subprocess.run(
-            cmd,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=10,
-            cwd=str(project_root),
-        )
-        
-        # Should not crash
-        assert proc.returncode == 0 or "shell" in proc.stderr.lower() or proc.returncode == 0
-
-
 def test_shell_context_available_during_session(tmp_path, monkeypatch):
     """Test that whai can access session log context while in a shell session."""
     # Create session directory structure
@@ -187,32 +139,6 @@ def test_shell_context_available_during_session(tmp_path, monkeypatch):
     # Should find session context (deep)
     assert is_deep is True
     assert "echo hello" in context or "hello" in context
-
-
-def test_shell_session_log_deleted_on_exit(tmp_path):
-    """Test that session log is deleted when shell exits."""
-    log_path = tmp_path / "test_session.log"
-    
-    with (
-        patch("whai.shell.session._launch_unix") as mock_unix,
-        patch("whai.shell.session._launch_windows") as mock_windows,
-    ):
-        # Mock shell to return immediately
-        if os.name == "nt":
-            mock_windows.return_value = 0
-        else:
-            mock_unix.return_value = 0
-        
-        # Launch session
-        launch_shell_session(
-            shell="bash" if os.name != "nt" else "pwsh",
-            log_path=log_path,
-            delete_on_exit=True,
-        )
-        
-        # Log should be deleted (or not created if shell failed to start)
-        # Since we're mocking, the file won't exist, but we test the deletion logic
-        assert not log_path.exists() or True  # Log is ephemeral
 
 
 def test_shell_command_with_very_long_shell_name(tmp_path):
@@ -292,35 +218,6 @@ def test_shell_command_malformed_options(tmp_path):
         # Missing value for --log
         result = runner.invoke(app, ["shell", "--log"])
         assert "RecursionError" not in (result.stdout + result.stderr)
-
-
-def test_shell_command_in_main_callback_routing(tmp_path):
-    """Test that routing 'shell' from main callback works correctly."""
-    # This specifically tests the workaround code that routes "shell" from query
-    # when it's parsed as a free-form argument
-    
-    # Import the main callback to test routing logic
-    from whai.cli.main import main
-    import typer
-    
-    with (
-        patch("whai.shell.session.launch_shell_session") as mock_launch,
-        patch("typer.Context") as mock_ctx,
-    ):
-        mock_launch.return_value = 0
-        
-        # Create a mock context where invoked_subcommand is None
-        # and query contains "shell"
-        mock_ctx_instance = MagicMock()
-        mock_ctx_instance.invoked_subcommand = None
-        mock_ctx.return_value = mock_ctx_instance
-        
-        # This tests the routing logic in main() callback
-        # We can't easily test this with CliRunner due to Typer internals,
-        # but we can verify the routing code exists and doesn't have syntax errors
-        # by importing and checking the function exists
-        assert hasattr(main, "__code__")
-        assert "shell" in str(main.__code__.co_names) or True  # Shell routing code exists
 
 
 def test_shell_command_shows_exit_tip(tmp_path):

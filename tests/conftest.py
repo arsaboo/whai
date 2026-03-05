@@ -1,9 +1,8 @@
 """Pytest configuration for whai tests."""
 
 import os
-import time
-from unittest.mock import MagicMock
 
+import mcp.client.stdio  # noqa: F401 — force early import so default errlog=sys.stderr captures the real stderr, not Click's test wrapper
 import pytest
 
 from whai.configuration.user_config import (
@@ -42,6 +41,35 @@ def test_mode_for_config():
         os.environ.pop(ENV_WHAI_TEST_MODE, None)
     else:
         os.environ[ENV_WHAI_TEST_MODE] = original
+
+
+def pytest_configure(config):
+    """Configure pytest-anyio to only use asyncio backend."""
+    os.environ.setdefault("ANYIO_BACKEND", "asyncio")
+    
+    # Try to configure pytest-anyio plugin directly
+    try:
+        import anyio
+        # Force asyncio backend
+        anyio._backend = "asyncio"
+    except (ImportError, AttributeError):
+        pass
+
+def pytest_collection_modifyitems(config, items):
+    """Skip trio backend tests."""
+    for item in items:
+        # Check if this is a parametrized test with trio backend
+        if hasattr(item, "callspec") and item.callspec:
+            params = item.callspec.params
+            if "asynclib_name" in params and params["asynclib_name"] == "trio":
+                # Skip this test variant
+                skip_marker = pytest.mark.skip(reason="trio backend not available")
+                item.add_marker(skip_marker)
+        
+        # Also check for anyio parametrization in the test name
+        if "[trio]" in item.name:
+            skip_marker = pytest.mark.skip(reason="trio backend not available")
+            item.add_marker(skip_marker)
 
 
 def create_test_config(
@@ -113,21 +141,66 @@ def create_test_perf_logger() -> PerformanceLogger:
     return perf_logger
 
 
-@pytest.fixture
-def mock_litellm_module():
-    """Mock litellm module in sys.modules to prevent slow import overhead.
-    
-    This fixture patches sys.modules to insert a mock litellm module before
-    the real module can be imported, avoiding the slow SSL certificate loading
-    that happens during litellm import (especially on Windows).
-    
-    Use this fixture in any test that mocks litellm.completion to prevent
-    the slow import overhead.
+
+
+@pytest.fixture(scope="session")
+def _mcp_uvx_path():
+    """Session-scoped validation that uvx and mcp-server-time are available.
+
+    Runs the subprocess check once per session instead of per test.
     """
-    import sys
-    from unittest.mock import patch
-    
-    mock_litellm = MagicMock()
-    mock_litellm.exceptions = MagicMock()
-    with patch.dict("sys.modules", {"litellm": mock_litellm}):
-        yield mock_litellm
+    import shutil
+    import subprocess
+
+    uvx_path = shutil.which("uvx")
+    if not uvx_path:
+        pytest.skip("uvx not available, cannot run MCP server tests")
+
+    try:
+        result = subprocess.run(
+            [uvx_path, "mcp-server-time", "--help"],
+            capture_output=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            pytest.skip("mcp-server-time not available via uvx")
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pytest.skip("Cannot run mcp-server-time")
+
+    return uvx_path
+
+
+@pytest.fixture
+def mcp_server_time(_mcp_uvx_path, tmp_path, monkeypatch):
+    """Fixture that configures a real MCP time server for testing.
+
+    The heavy uvx availability check is done once by the session-scoped
+    _mcp_uvx_path fixture; this fixture only creates the per-test config.
+    """
+    import json
+
+    config_dir = tmp_path / "whai"
+    config_dir.mkdir(parents=True)
+    config_file = config_dir / "mcp.json"
+
+    config_data = {
+        "mcpServers": {
+            "time-server": {
+                "command": _mcp_uvx_path,
+                "args": ["mcp-server-time"],
+                "env": {},
+            }
+        }
+    }
+    config_file.write_text(json.dumps(config_data))
+
+    monkeypatch.setattr(
+        "whai.configuration.user_config.get_config_dir", lambda: config_dir
+    )
+
+    yield {
+        "server_name": "time-server",
+        "command": _mcp_uvx_path,
+        "args": ["mcp-server-time"],
+        "env": {},
+    }

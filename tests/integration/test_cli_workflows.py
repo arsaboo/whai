@@ -116,13 +116,11 @@ def mock_llm_with_tool_call():
     return mock_completion
 
 
-def test_flow_1_qna_without_commands(mock_llm_text_only, mock_litellm_module):
+def test_flow_1_qna_without_commands(mock_llm_text_only):
     """
     Test Flow: Q&A without command execution.
     User asks a general question, LLM provides text-only answer.
     """
-    # Mock LLM - use fixture to prevent slow litellm import overhead
-    mock_litellm_module.completion = mock_llm_text_only
     with (
         patch("litellm.completion", side_effect=mock_llm_text_only),
         patch("whai.context.get_context", return_value=("", False)),
@@ -134,7 +132,7 @@ def test_flow_1_qna_without_commands(mock_llm_text_only, mock_litellm_module):
 
 
 def test_flow_2_command_generation_approved(
-    mock_llm_text_only, mock_llm_with_tool_call, mock_litellm_module
+    mock_llm_text_only, mock_llm_with_tool_call
 ):
     """
     Test Flow: Command generation and execution (approved).
@@ -150,8 +148,6 @@ def test_flow_2_command_generation_approved(
         else:
             return mock_llm_text_only(**kwargs)
 
-    # Mock execute_command to avoid real command execution
-    mock_litellm_module.completion = mock_completion_sequence
     with (
         patch("litellm.completion", side_effect=mock_completion_sequence),
         patch("whai.context.get_context", return_value=("", False)),
@@ -165,13 +161,11 @@ def test_flow_2_command_generation_approved(
         assert "Proposed command" in result.stdout
 
 
-def test_flow_3_command_generation_rejected(mock_llm_with_tool_call, mock_litellm_module):
+def test_flow_3_command_generation_rejected(mock_llm_with_tool_call):
     """
     Test Flow: Command generation and execution (rejected).
     User asks for a command but rejects it.
     """
-    # Mock LLM
-    mock_litellm_module.completion = mock_llm_with_tool_call
     with (
         patch("litellm.completion", side_effect=mock_llm_with_tool_call),
         patch("whai.context.get_context", return_value=("", False)),
@@ -188,10 +182,8 @@ def test_flow_3_command_generation_rejected(mock_llm_with_tool_call, mock_litell
         )
 
 
-def test_cli_with_role_option(mock_llm_text_only, mock_litellm_module):
+def test_cli_with_role_option(mock_llm_text_only):
     """Test that --role option works correctly."""
-    # Mock LLM
-    mock_litellm_module.completion = mock_llm_text_only
     with (
         patch("litellm.completion", side_effect=mock_llm_text_only),
         patch("whai.context.get_context", return_value=("", False)),
@@ -204,10 +196,8 @@ def test_cli_with_role_option(mock_llm_text_only, mock_litellm_module):
         assert "default" in output.lower()
 
 
-def test_cli_with_model_override(mock_llm_text_only, mock_litellm_module):
+def test_cli_with_model_override(mock_llm_text_only):
     """Test that --model option works correctly."""
-    # Mock LLM
-    mock_litellm_module.completion = mock_llm_text_only
     with (
         patch("litellm.completion", side_effect=mock_llm_text_only),
         patch("whai.context.get_context", return_value=("", False)),
@@ -223,9 +213,8 @@ def test_cli_with_model_override(mock_llm_text_only, mock_litellm_module):
         assert "default" in output.lower()
 
 
-def test_cli_timeout_default_passed(mock_llm_with_tool_call, mock_llm_text_only, mock_litellm_module):
+def test_cli_timeout_default_passed(mock_llm_with_tool_call, mock_llm_text_only):
     """Default timeout (60s) should be passed to execute_command."""
-    # Sequence: tool call first, then text only
     call_count = [0]
 
     def mock_completion_sequence(**kwargs):
@@ -235,7 +224,6 @@ def test_cli_timeout_default_passed(mock_llm_with_tool_call, mock_llm_text_only,
         else:
             return mock_llm_text_only(**kwargs)
 
-    mock_litellm_module.completion = mock_completion_sequence
     with (
         patch("litellm.completion", side_effect=mock_completion_sequence),
         patch("whai.context.get_context", return_value=("", False)),
@@ -253,7 +241,7 @@ def test_cli_timeout_default_passed(mock_llm_with_tool_call, mock_llm_text_only,
         assert any(kw.get("timeout") == 60 for kw in call_kwargs)
 
 
-def test_cli_timeout_override_passed(mock_llm_with_tool_call, mock_llm_text_only, mock_litellm_module):
+def test_cli_timeout_override_passed(mock_llm_with_tool_call, mock_llm_text_only):
     """Override timeout via --timeout should be passed through."""
     call_count = [0]
 
@@ -264,7 +252,6 @@ def test_cli_timeout_override_passed(mock_llm_with_tool_call, mock_llm_text_only
         else:
             return mock_llm_text_only(**kwargs)
 
-    mock_litellm_module.completion = mock_completion_sequence
     with (
         patch("litellm.completion", side_effect=mock_completion_sequence),
         patch("whai.context.get_context", return_value=("", False)),
@@ -281,20 +268,15 @@ def test_cli_timeout_override_passed(mock_llm_with_tool_call, mock_llm_text_only
         assert 30 in timeouts, f"Expected timeout=30, got timeouts: {timeouts}"
 
 
-def test_cli_timeout_invalid_value(mock_litellm_module):
+def test_cli_timeout_invalid_value():
     """Invalid timeout values should fail fast with clear error."""
-    # Use negative timeout to test validation - should fail before any LLM/context code
-    # Note: timeout=0 is valid (infinite timeout), so we use -1 to test invalid case
-    mock_litellm_module.completion = lambda **kwargs: None  # Should never be called
     result = runner.invoke(app, ["test query", "--no-context", "--timeout", "-1"])
     assert result.exit_code == 2
     assert "timeout" in (result.stdout + result.stderr).lower()
 
 
-def test_cli_with_no_context(mock_llm_text_only, mock_litellm_module):
+def test_cli_with_no_context(mock_llm_text_only):
     """Test that --no-context flag works correctly."""
-    # Mock LLM
-    mock_litellm_module.completion = mock_llm_text_only
     with (
         patch("litellm.completion", side_effect=mock_llm_text_only),
         patch("whai.context.get_context") as mock_context,
@@ -323,13 +305,12 @@ def test_cli_missing_config(monkeypatch):
     assert "Configuration" in output or "config" in output.lower()
 
 
-def test_cli_keyboard_interrupt(mock_llm_text_only, mock_litellm_module):
+def test_cli_keyboard_interrupt(mock_llm_text_only):
     """Test that Ctrl+C is handled gracefully."""
 
     def mock_completion_with_interrupt(**kwargs):
         raise KeyboardInterrupt()
 
-    mock_litellm_module.completion = mock_completion_with_interrupt
     with (
         patch("litellm.completion", side_effect=mock_completion_with_interrupt),
         patch("whai.context.get_context", return_value=("", False)),
@@ -340,10 +321,8 @@ def test_cli_keyboard_interrupt(mock_llm_text_only, mock_litellm_module):
         assert "Interrupted" in result.stdout or result.exit_code == 0
 
 
-def test_cli_with_context_warning(mock_llm_text_only, mock_litellm_module):
+def test_cli_with_context_warning(mock_llm_text_only):
     """Test that warning is shown when only shallow context is available."""
-    # Mock LLM
-    mock_litellm_module.completion = mock_llm_text_only
     # Patch where it's imported and used in main.py
     with (
         patch("litellm.completion", side_effect=mock_llm_text_only),
@@ -356,10 +335,8 @@ def test_cli_with_context_warning(mock_llm_text_only, mock_litellm_module):
         assert "shell history only" in output.lower() or "warning" in output.lower()
 
 
-def test_unquoted_arguments(mock_llm_text_only, mock_litellm_module):
+def test_unquoted_arguments(mock_llm_text_only):
     """Test that unquoted multi-word queries work correctly."""
-    # Mock LLM
-    mock_litellm_module.completion = mock_llm_text_only
     with (
         patch("litellm.completion", side_effect=mock_llm_text_only),
         patch("whai.context.get_context", return_value=("", False)),
@@ -372,10 +349,8 @@ def test_unquoted_arguments(mock_llm_text_only, mock_litellm_module):
         assert "This is a test response" in result.stdout
 
 
-def test_quoted_arguments_backward_compat(mock_llm_text_only, mock_litellm_module):
+def test_quoted_arguments_backward_compat(mock_llm_text_only):
     """Test that quoted single argument still works (backward compatibility)."""
-    # Mock LLM
-    mock_litellm_module.completion = mock_llm_text_only
     with (
         patch("litellm.completion", side_effect=mock_llm_text_only),
         patch("whai.context.get_context", return_value=("", False)),
@@ -386,10 +361,8 @@ def test_quoted_arguments_backward_compat(mock_llm_text_only, mock_litellm_modul
         assert "This is a test response" in result.stdout
 
 
-def test_mixed_options_unquoted(mock_llm_text_only, mock_litellm_module):
+def test_mixed_options_unquoted(mock_llm_text_only):
     """Test that options work correctly with unquoted arguments."""
-    # Mock LLM
-    mock_litellm_module.completion = mock_llm_text_only
     with (
         patch("litellm.completion", side_effect=mock_llm_text_only),
         patch("whai.context.get_context", return_value=("", False)),
@@ -423,7 +396,7 @@ def test_real_command_execution():
     assert code == 0
 
 
-def test_provider_precedence_cli_over_role(mock_llm_text_only, mock_litellm_module, tmp_path, monkeypatch):
+def test_provider_precedence_cli_over_role(mock_llm_text_only, tmp_path, monkeypatch):
     """Test that CLI provider override takes precedence over role provider."""
     from pathlib import Path
     from unittest.mock import patch
@@ -486,7 +459,6 @@ You are a custom assistant.
             provider_used.append("openai")
         return mock_llm_text_only(**kwargs)
 
-    mock_litellm_module.completion = mock_completion_with_provider_check
     with (
         patch("litellm.completion", side_effect=mock_completion_with_provider_check),
         patch("whai.context.get_context", return_value=("", False)),
@@ -503,7 +475,7 @@ You are a custom assistant.
         assert "gpt-4" in output or "openai" in output.lower()
 
 
-def test_provider_from_role_metadata(mock_llm_text_only, mock_litellm_module, tmp_path, monkeypatch):
+def test_provider_from_role_metadata(mock_llm_text_only, tmp_path, monkeypatch):
     """Test that role provider is used when no CLI override is provided."""
     from pathlib import Path
     from unittest.mock import patch
@@ -554,7 +526,6 @@ model: claude-3-opus
 You are an Anthropic assistant.
 """)
 
-    mock_litellm_module.completion = mock_llm_text_only
     with (
         patch("litellm.completion", side_effect=mock_llm_text_only),
         patch("whai.context.get_context", return_value=("", False)),
@@ -572,7 +543,7 @@ You are an Anthropic assistant.
         assert "claude-3-opus" in output or "anthropic" in output.lower()
 
 
-def test_provider_without_model_uses_provider_default(mock_llm_text_only, mock_litellm_module, tmp_path, monkeypatch):
+def test_provider_without_model_uses_provider_default(mock_llm_text_only, tmp_path, monkeypatch):
     """Test that --provider without --model uses the specified provider's default model, not the default provider's model."""
     from unittest.mock import patch
 
@@ -619,7 +590,6 @@ def test_provider_without_model_uses_provider_default(mock_llm_text_only, mock_l
         models_used.append(model)
         return mock_llm_text_only(**kwargs)
 
-    mock_litellm_module.completion = mock_completion_with_model_check
     with (
         patch("litellm.completion", side_effect=mock_completion_with_model_check),
         patch("whai.context.get_context", return_value=("", False)),
@@ -639,7 +609,7 @@ def test_provider_without_model_uses_provider_default(mock_llm_text_only, mock_l
         assert not any("gpt-4" in model.lower() or "gpt_4" in model.lower() for model in models_used)
 
 
-def test_provider_with_model_uses_cli_model_override(mock_llm_text_only, mock_litellm_module, tmp_path, monkeypatch):
+def test_provider_with_model_uses_cli_model_override(mock_llm_text_only, tmp_path, monkeypatch):
     """Test that --provider X --model Y uses model Y (CLI override still works)."""
     from unittest.mock import patch
 
@@ -686,7 +656,6 @@ def test_provider_with_model_uses_cli_model_override(mock_llm_text_only, mock_li
         models_used.append(model)
         return mock_llm_text_only(**kwargs)
 
-    mock_litellm_module.completion = mock_completion_with_model_check
     with (
         patch("litellm.completion", side_effect=mock_completion_with_model_check),
         patch("whai.context.get_context", return_value=("", False)),

@@ -9,6 +9,26 @@ When ready to publish, change to version header: `## vX.Y.Z` (where X.Y.Z is you
 
 ## In Progress
 
+[2026-03-05] [fix] [mcp]: fix MCP tool routing for server names containing underscores; resolve via known server name lookup instead of splitting on underscores
+[2026-03-05] [fix] [mcp]: fix MCP connection cleanup not running on exit; track manager ownership with a flag instead of identity comparison
+[2026-03-05] [chore] [mcp]: remove commented-out debug logging in streaming response handler
+[2026-03-05] [chore] [deps]: add anyio as explicit dev dependency (was implicit via mcp transitive dep)
+[2026-03-05] [feature] [mcp]: add --no-mcp CLI flag and [mcp] enabled config toggle to disable MCP per-run or persistently
+[2026-03-05] [change] [config]: self-healing config: missing top-level sections are automatically back-filled on load
+[2026-03-05] [chore] [mcp]: remove unused asyncio import in mcp/client.py
+[2026-03-05] [test] [performance]: optimize MCP test fixture with session-scoped uvx validation; suite 38% faster (17.7s → 11s)
+[2026-03-05] [test] [coverage]: add 18 behavioral tests for parse_tool_calls, handle_streaming_response, and handle_complete_response
+[2026-03-05] [fix] [test]: fix 41 failing integration tests caused by mock_litellm_module corrupting sys.modules and MCP SDK capturing Click's fake stderr
+[2026-03-05] [test] [audit]: remove 15 implementation-detail and no-op tests, replace with behavioral equivalents; move test_session_context to integration
+[2026-03-05] [fix] [mcp]: fix MCP config isolation in tests by using module-level import for get_config_dir, preventing real MCP servers from starting during unrelated tests
+[2026-03-05] [docs] [general]: update README (ToC, MCP core feature) and DEV.md (Python version references to match noxfile 3.10-3.14)
+[2025-12-01] [fix] [mcp]: add graceful error handling for MCP server initialization and tool listing failures with user-friendly messages
+[2025-12-01] [feature] [mcp]: add performance logging to MCP initialization and tool discovery operations
+[2025-12-01] [change] [mcp]: improve event loop management to reuse persistent loop for MCP connections and prevent connection state issues
+[2025-12-01] [feature] [mcp]: add configurable approval workflow for MCP tool calls with per-server requires_approval setting
+[2025-12-01] [fix] [mcp]: fix MCP tool call extraction in streaming responses to handle tools without command field
+[2025-12-01] [docs] [mcp]: update system prompt with MCP tool call example
+
 ## v0.10.0
 
 [2026-02-25] [fix] [cli]: parse -T inline when placed after query (was sent to LLM)

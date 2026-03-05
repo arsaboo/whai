@@ -12,6 +12,7 @@ def extract_inline_overrides(
     *,
     role: Optional[str],
     no_context: bool,
+    no_mcp: bool,
     model: Optional[str],
     temperature: Optional[float],
     timeout: int,
@@ -28,6 +29,7 @@ def extract_inline_overrides(
     # Local copies to mutate
     o_role = role
     o_no_context = no_context
+    o_no_mcp = no_mcp
     o_model = model
     o_temperature = temperature
     o_timeout = timeout
@@ -57,6 +59,11 @@ def extract_inline_overrides(
         # --no-context
         if token == "--no-context":
             o_no_context = True
+            i += 1
+            continue
+        # --no-mcp
+        if token == "--no-mcp":
+            o_no_mcp = True
             i += 1
             continue
         # --model/-m <str>
@@ -132,6 +139,7 @@ def extract_inline_overrides(
     return cleaned, {
         "role": o_role,
         "no_context": o_no_context,
+        "no_mcp": o_no_mcp,
         "model": o_model,
         "temperature": o_temperature,
         "timeout": o_timeout

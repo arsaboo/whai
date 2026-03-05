@@ -256,31 +256,19 @@ def test_truncation_with_unicode_characters():
     assert any(ord(char) > 127 for char in truncated)
 
 
-def test_token_limit_error_from_api_handled(mock_litellm_module):
+def test_token_limit_error_from_api_handled():
     """Test that token limit errors from the API are handled gracefully."""
-    # Create a mock exception class
-    class ContextWindowExceededError(Exception):
-        def __init__(self, message, llm_provider, model):
-            self.message = message
-            self.llm_provider = llm_provider
-            self.model = model
-            super().__init__(message)
-    
-    # Add exception to mock module
-    mock_litellm_module.exceptions.ContextWindowExceededError = ContextWindowExceededError
-    
-    # Mock LLM to raise token limit error
+    from litellm.exceptions import ContextWindowExceededError
+
     def mock_llm_error(**kwargs):
         raise ContextWindowExceededError(
             message="Context length exceeded",
             llm_provider="openai",
-            model="gpt-4"
+            model="gpt-4",
         )
-    
-    mock_litellm_module.completion = mock_llm_error
+
     with (
         patch("litellm.completion", side_effect=mock_llm_error),
-        patch("litellm.exceptions.ContextWindowExceededError", ContextWindowExceededError),
         patch("whai.cli.main.get_context", return_value=("some context", False)),
     ):
         result = runner.invoke(app, ["test query", "--no-context"])

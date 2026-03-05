@@ -386,6 +386,7 @@ def main(
         None, "--role", "-r", help="Role to use (default, debug, etc.)"
     ),
     no_context: bool = typer.Option(False, "--no-context", help="Skip context capture"),
+    no_mcp: bool = typer.Option(False, "--no-mcp", help="Disable MCP tools for this run"),
     model: Optional[str] = typer.Option(
         None, "--model", "-m", help="Override the LLM model"
     ),
@@ -508,6 +509,7 @@ def main(
             query,
             role=role,
             no_context=no_context,
+            no_mcp=no_mcp,
             model=model,
             temperature=temperature,
             timeout=timeout,
@@ -516,6 +518,7 @@ def main(
         )
         role = overrides["role"]
         no_context = overrides["no_context"]
+        no_mcp = overrides["no_mcp"]
         model = overrides["model"]
         temperature = overrides["temperature"]
         timeout = overrides["timeout"]
@@ -575,6 +578,8 @@ def main(
         final_detected_flags.append("-v")
     if no_context:
         final_detected_flags.append("--no-context")
+    if no_mcp:
+        final_detected_flags.append("--no-mcp")
     if interactive_config:
         final_detected_flags.append("--interactive-config")
     if version_flag:
@@ -650,6 +655,9 @@ def main(
             ui.error(f"Failed to load role: {e}")
             raise typer.Exit(1)
 
+        # Resolve MCP enabled state: CLI --no-mcp overrides config
+        mcp_enabled = not no_mcp and config.mcp.enabled
+
         # 2. Get context (tmux or history)
         command_to_exclude = _reconstruct_invocation_command()
         if command_to_exclude:
@@ -695,7 +703,7 @@ def main(
         command_string = _reconstruct_invocation_command()
 
         # 8. Main conversation loop
-        run_conversation_loop(llm_provider, messages, timeout, command_string=command_string, target_pane=target_pane)
+        run_conversation_loop(llm_provider, messages, timeout, command_string=command_string, target_pane=target_pane, mcp_enabled=mcp_enabled)
 
     except typer.Exit:
         raise

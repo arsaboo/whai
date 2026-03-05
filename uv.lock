@@ -2495,6 +2495,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "anyio" },
     { name = "nest-asyncio" },
     { name = "nox" },
     { name = "pytest" },
@@ -2516,6 +2517,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "anyio", specifier = ">=4.11.0" },
     { name = "nest-asyncio", specifier = ">=1.6.0" },
     { name = "nox", specifier = ">=2025.10.16" },
     { name = "pytest", specifier = ">=8.3.5" },

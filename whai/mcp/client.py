@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, List, Optional
 
-from mcp import ClientSession
+from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.types import Tool
 
@@ -53,8 +53,6 @@ class MCPClient:
         perf.start()
 
         try:
-            from mcp import StdioServerParameters
-
             server_params = StdioServerParameters(
                 command=self.command,
                 args=self.args,

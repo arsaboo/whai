@@ -197,7 +197,7 @@ That's it! GitHub Actions will automatically:
 - Publish to TestPyPI
 - Verify the TestPyPI package with smoke tests
 - Publish to PyPI
-- Create a GitHub Release with CHANGELOG entries
+- Create a GitHub Release with CHANGELOG entries (Automatically generated, edit it for better notes)
 
 You can monitor the progress in the "Actions" tab of your GitHub repository.
 
@@ -252,6 +252,10 @@ This is perfect for:
 - Verifying the workflow works before your first release
 - Testing changes to the workflow itself
 - Validating that your package builds correctly
+
+#### Skipping TestPyPI when its upload API is flaky
+
+If the TestPyPI legacy upload endpoint is returning 503, you can skip the TestPyPI step and still publish to PyPI: in the repo go to **Settings → Secrets and Variables → Actions** and add a variable `SKIP_TESTPYPI` with value `true`. The workflow will skip publish and verify for TestPyPI and proceed to PyPI. Remove the variable (or set it to `false`) to re-enable TestPyPI when it works again.
 
 ### Manual Publishing (Fallback)
 

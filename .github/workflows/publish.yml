@@ -105,63 +105,70 @@ jobs:
           name: dist
           path: dist/
 
-  publish-testpypi:
-    name: Publish to TestPyPI
+  # Set repo variable SKIP_TESTPYPI=true (Settings → Actions → Variables) to skip TestPyPI when its upload API is flaky. Clear the variable to re-enable.
+  testpypi:
+    name: TestPyPI (publish + verify)
     runs-on: ubuntu-latest
     needs: [build, validate-version]
     if: needs.validate-version.outputs.is_test_mode != 'true'
     environment:
       name: testpypi
       url: https://test.pypi.org/project/whai/
-    
     steps:
+      - name: Skip TestPyPI when disabled
+        id: skip-check
+        run: |
+          if [ "${{ vars.SKIP_TESTPYPI }}" = "true" ]; then
+            echo "skipped=true" >> $GITHUB_OUTPUT
+            echo "Skipping TestPyPI (repo variable SKIP_TESTPYPI is set). Clear it in Settings to re-enable."
+            exit 0
+          fi
+          echo "skipped=false" >> $GITHUB_OUTPUT
+
       - uses: actions/checkout@v4
-      
+        if: steps.skip-check.outputs.skipped != 'true'
+
       - name: Install uv
+        if: steps.skip-check.outputs.skipped != 'true'
         uses: astral-sh/setup-uv@v5
-      
+
       - name: Download build artifacts
+        if: steps.skip-check.outputs.skipped != 'true'
         uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
-      
+
       - name: Publish to TestPyPI
+        if: steps.skip-check.outputs.skipped != 'true'
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
         run: uv publish --publish-url https://test.pypi.org/legacy/
 
-  verify-testpypi:
-    name: Verify TestPyPI Package
-    runs-on: ubuntu-latest
-    needs: [publish-testpypi, validate-version]
-    if: needs.validate-version.outputs.is_test_mode != 'true'
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-      
       - name: Wait for TestPyPI indexing
+        if: steps.skip-check.outputs.skipped != 'true'
         run: sleep 120
-      
+
       - name: Create verification venv
+        if: steps.skip-check.outputs.skipped != 'true'
         run: uv venv .venv_verify
-      
+
       - name: Check if version is available on TestPyPI
+        if: steps.skip-check.outputs.skipped != 'true'
         run: |
           VERSION="${{ needs.validate-version.outputs.version }}"
           echo "Checking for whai version $VERSION on TestPyPI..."
           uv run --no-project -- pip index versions whai --index-url https://test.pypi.org/simple/
-      
+
       - name: Install from TestPyPI
+        if: steps.skip-check.outputs.skipped != 'true'
         run: |
           VERSION="${{ needs.validate-version.outputs.version }}"
           source .venv_verify/bin/activate
           uv pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple "whai==$VERSION" --index-strategy unsafe-best-match
-      
+
       - name: Run smoke tests
+        if: steps.skip-check.outputs.skipped != 'true'
         run: |
           source .venv_verify/bin/activate
           VERSION="${{ needs.validate-version.outputs.version }}"
@@ -244,7 +251,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: verify-testpypi
+    needs: [testpypi, validate-version]
     if: needs.validate-version.outputs.is_test_mode != 'true'
     environment:
       name: pypi

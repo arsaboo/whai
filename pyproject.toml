@@ -70,6 +70,6 @@ dev = [
     "pytest-cov>=5.0.0",
     "pytest-mock>=3.14.1",
     "ruff>=0.14.3",
-    "nest-asyncio>=1.6.0",
+    "nest-asyncio2>=1.6.0",
     "anyio>=4.11.0",
 ]

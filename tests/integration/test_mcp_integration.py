@@ -3,7 +3,7 @@
 import asyncio
 from unittest.mock import MagicMock, patch
 
-import nest_asyncio
+import nest_asyncio2
 import pytest
 
 from tests.conftest import create_test_config, create_test_perf_logger
@@ -16,16 +16,17 @@ class TestMCPIntegration:
 
     @pytest.fixture(autouse=True, scope="class")
     def enable_nest_asyncio(self):
-        """Enable nest_asyncio for tests in this class that need it."""
+        """Enable nest_asyncio2 for tests in this class that need it."""
         # Only apply once for the class, and only when needed
-        # This allows asyncio.run() to work within async test contexts
+        # This allows asyncio.run() to work within async test contexts.
+        # nest_asyncio2 is used (not nest-asyncio) for Python 3.14 compatibility.
         try:
-            nest_asyncio.apply()
+            nest_asyncio2.apply()
         except RuntimeError:
             # Already applied, ignore
             pass
         yield
-        # Note: nest_asyncio.apply() is persistent, no cleanup needed
+        # Note: apply() is persistent, no cleanup needed
 
     async def test_mcp_tools_in_llm_provider(self, mcp_server_time):
         """Test that MCP tools are discovered and included in LLM provider."""

@@ -286,8 +286,8 @@ def test_complex_output_preserved_powershell_5():
 
 
 @pytest.mark.parametrize("transcript,version", [
-    (POWERSHELL_7_TRANSCRIPT, "7.5.4"),
-    (POWERSHELL_5_TRANSCRIPT, "5.1.26100.1000"),
+    pytest.param(POWERSHELL_7_TRANSCRIPT, "7.5.4", id="ps7"),
+    pytest.param(POWERSHELL_5_TRANSCRIPT, "5.1.26100.1000", id="ps5"),
 ])
 def test_version_specific_metadata_preserved(transcript, version):
     """Test that version-specific metadata is preserved."""
@@ -297,8 +297,8 @@ def test_version_specific_metadata_preserved(transcript, version):
 
 
 @pytest.mark.parametrize("transcript", [
-    POWERSHELL_7_TRANSCRIPT,
-    POWERSHELL_5_TRANSCRIPT,
+    pytest.param(POWERSHELL_7_TRANSCRIPT, id="ps7"),
+    pytest.param(POWERSHELL_5_TRANSCRIPT, id="ps5"),
 ])
 def test_no_empty_metadata_blocks(transcript):
     """Test that there are no empty metadata blocks in the output."""

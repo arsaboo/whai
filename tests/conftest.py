@@ -1,9 +1,8 @@
 """Pytest configuration for whai tests."""
 
 import os
-import time
-from unittest.mock import MagicMock
 
+import mcp.client.stdio  # noqa: F401 — force early import so default errlog=sys.stderr captures the real stderr, not Click's test wrapper
 import pytest
 
 from whai.configuration.user_config import (
@@ -44,14 +43,8 @@ def test_mode_for_config():
         os.environ[ENV_WHAI_TEST_MODE] = original
 
 
-# Configure pytest-anyio to only use asyncio backend (not trio)
-# pytest-anyio runs tests with both backends by default, but we only want asyncio
-import pytest
-
 def pytest_configure(config):
     """Configure pytest-anyio to only use asyncio backend."""
-    # Set environment variable for anyio
-    import os
     os.environ.setdefault("ANYIO_BACKEND", "asyncio")
     
     # Try to configure pytest-anyio plugin directly
@@ -148,63 +141,21 @@ def create_test_perf_logger() -> PerformanceLogger:
     return perf_logger
 
 
-@pytest.fixture
-def mock_litellm_module():
-    """Mock litellm module in sys.modules to prevent slow import overhead.
-    
-    This fixture patches sys.modules to insert a mock litellm module before
-    the real module can be imported, avoiding the slow SSL certificate loading
-    that happens during litellm import (especially on Windows).
-    
-    Use this fixture in any test that mocks litellm.completion to prevent
-    the slow import overhead.
-    """
-    import sys
-    from unittest.mock import patch
-    
-    mock_litellm = MagicMock()
-    mock_litellm.exceptions = MagicMock()
-    with patch.dict("sys.modules", {"litellm": mock_litellm}):
-        yield mock_litellm
 
 
-@pytest.fixture
-def llm_provider_with_cleanup(create_test_config, create_test_perf_logger):
-    """
-    Fixture that provides LLMProvider with automatic MCP cleanup.
-    
-    Use this fixture instead of creating LLMProvider directly in tests
-    to ensure MCP connections are properly closed.
-    """
-    providers = []
-    
-    def _create_provider(*args, **kwargs):
-        from whai.llm import LLMProvider
-        provider = LLMProvider(*args, **kwargs)
-        providers.append(provider)
-        return provider
-    
-    yield _create_provider
-    
+@pytest.fixture(scope="session")
+def _mcp_uvx_path():
+    """Session-scoped validation that uvx and mcp-server-time are available.
 
-
-@pytest.fixture
-def mcp_server_time(tmp_path, monkeypatch):
+    Runs the subprocess check once per session instead of per test.
     """
-    Fixture that spins up a real temporary MCP time server for testing.
-    
-    Uses uvx to run mcp-server-time ephemerally. The server process is started
-    and cleaned up automatically.
-    """
-    import subprocess
     import shutil
-    
-    # Check if uvx is available
+    import subprocess
+
     uvx_path = shutil.which("uvx")
     if not uvx_path:
         pytest.skip("uvx not available, cannot run MCP server tests")
-    
-    # Check if mcp-server-time can be run
+
     try:
         result = subprocess.run(
             [uvx_path, "mcp-server-time", "--help"],
@@ -215,34 +166,41 @@ def mcp_server_time(tmp_path, monkeypatch):
             pytest.skip("mcp-server-time not available via uvx")
     except (subprocess.TimeoutExpired, FileNotFoundError):
         pytest.skip("Cannot run mcp-server-time")
-    
-    # Create MCP config for the test server
+
+    return uvx_path
+
+
+@pytest.fixture
+def mcp_server_time(_mcp_uvx_path, tmp_path, monkeypatch):
+    """Fixture that configures a real MCP time server for testing.
+
+    The heavy uvx availability check is done once by the session-scoped
+    _mcp_uvx_path fixture; this fixture only creates the per-test config.
+    """
+    import json
+
     config_dir = tmp_path / "whai"
     config_dir.mkdir(parents=True)
     config_file = config_dir / "mcp.json"
-    
+
     config_data = {
         "mcpServers": {
             "time-server": {
-                "command": uvx_path,
+                "command": _mcp_uvx_path,
                 "args": ["mcp-server-time"],
-                "env": {}
+                "env": {},
             }
         }
     }
-    
-    import json
     config_file.write_text(json.dumps(config_data))
-    
-    # Mock get_config_dir to return our test config directory
-    def mock_get_config_dir():
-        return config_dir
-    
-    monkeypatch.setattr("whai.configuration.user_config.get_config_dir", mock_get_config_dir)
-    
+
+    monkeypatch.setattr(
+        "whai.configuration.user_config.get_config_dir", lambda: config_dir
+    )
+
     yield {
         "server_name": "time-server",
-        "command": uvx_path,
+        "command": _mcp_uvx_path,
         "args": ["mcp-server-time"],
         "env": {},
     }

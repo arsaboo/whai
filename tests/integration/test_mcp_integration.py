@@ -27,7 +27,7 @@ class TestMCPIntegration:
         yield
         # Note: nest_asyncio.apply() is persistent, no cleanup needed
 
-    async def test_mcp_tools_in_llm_provider(self, mcp_server_time, mock_litellm_module):
+    async def test_mcp_tools_in_llm_provider(self, mcp_server_time):
         """Test that MCP tools are discovered and included in LLM provider."""
         config = create_test_config()
         perf_logger = create_test_perf_logger()

@@ -141,6 +141,8 @@ class MCPManager:
         if self._initialized:
             return []
 
+        self._closed = False
+
         perf = PerformanceLogger("MCP Initialization")
         perf.start()
 

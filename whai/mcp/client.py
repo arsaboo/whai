@@ -42,12 +42,13 @@ class MCPClient:
         self._tools: Optional[List[Tool]] = None
         self._connected = False
         self._closed = False
-        self._entry_task: Optional[asyncio.Task] = None
 
     async def connect(self) -> None:
         """Connect to the MCP server."""
         if self._connected:
             return
+
+        self._closed = False
 
         perf = PerformanceLogger(f"MCP Connection ({self.server_name})")
         perf.start()
@@ -67,11 +68,6 @@ class MCPClient:
 
             self._session = ClientSession(self._read_stream, self._write_stream)
             await self._session.__aenter__()
-            # Track the task where contexts were entered for proper cleanup
-            try:
-                self._entry_task = asyncio.current_task()
-            except RuntimeError:
-                self._entry_task = None
             perf.log_section("Session creation", level="debug")
 
             await self._session.initialize()
@@ -222,50 +218,32 @@ class MCPClient:
             }
 
     async def close(self) -> None:
-        """Close the MCP connection."""
-        # Skip if already closed
+        """Close the MCP connection.
+
+        Always attempts proper async cleanup via __aexit__() to prevent
+        garbage-collected async generators from printing tracebacks to stderr.
+        Cancel scope errors from anyio are caught and suppressed since the
+        connection is effectively dead once this method is called.
+        """
         if self._closed:
             return
 
-        # Check if we're in the same task where contexts were entered
-        # If not, contexts are already cancelled by run_until_complete() and we should skip cleanup
-        try:
-            current_task = asyncio.current_task()
-            if self._entry_task is not None and current_task is not self._entry_task:
-                # Different task - contexts were cancelled when previous run_until_complete() completed
-                # Just mark as closed, let OS clean up the subprocess
-                self._closed = True
-                self._connected = False
-                self._session = None
-                self._read_stream = None
-                self._write_stream = None
-                return
-        except RuntimeError:
-            # No current task - contexts are already cancelled
-            self._closed = True
-            self._connected = False
-            self._session = None
-            self._read_stream = None
-            self._write_stream = None
-            return
-
-        # Only attempt to exit contexts if we're still connected
-        if not self._connected:
-            self._closed = True
-            return
-
-        # Close session if it exists
-        if self._session is not None:
-            await self._session.__aexit__(None, None, None)
-            self._session = None
-
-        # Close stdio context if it exists
-        if hasattr(self, "_stdio_context"):
-            await self._stdio_context.__aexit__(None, None, None)
-
         self._closed = True
         self._connected = False
+
+        if self._session is not None:
+            try:
+                await self._session.__aexit__(None, None, None)
+            except Exception:
+                logger.debug("Suppressed error closing MCP session for %s", self.server_name)
+            self._session = None
+
+        if hasattr(self, "_stdio_context"):
+            try:
+                await self._stdio_context.__aexit__(None, None, None)
+            except Exception:
+                logger.debug("Suppressed error closing stdio context for %s", self.server_name)
+
         self._read_stream = None
         self._write_stream = None
-        self._entry_task = None
 

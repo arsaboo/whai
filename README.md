@@ -44,7 +44,7 @@ When you get stuck, need a command, or encounter an error, just call `whai` for 
 
 * **Requires Approval:** Every `whai` command requires your explicit `[a]pprove` / `[r]eject` confirmation.
 * **MCP Tool Integration:** Connect local [MCP](https://modelcontextprotocol.io/) servers to extend `whai` with additional tools like file operations, database queries, or API integrations, all with the same approval workflow.
-* **Model-Agnostic:** Use models from OpenAI, Gemini, Anthropic, local Ollama models, and more.
+* **Model-Agnostic:** Use models from OpenAI, Gemini, Mistral, Anthropic, local Ollama models, and more.
 
 ## Quick Examples
 

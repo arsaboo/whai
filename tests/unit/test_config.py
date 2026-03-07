@@ -524,3 +524,54 @@ def test_get_config_path(tmp_path, monkeypatch):
     assert config_path == tmp_path / "config.toml"
 
 
+def test_openai_oauth_config_round_trip(tmp_path, monkeypatch):
+    """OpenAI OAuth-specific fields should persist through save/load."""
+    monkeypatch.setattr(config, "get_config_dir", lambda: tmp_path)
+
+    from whai.configuration.user_config import (
+        LLMConfig,
+        OpenAIConfig,
+        RolesConfig,
+        WhaiConfig,
+    )
+
+    test_config = WhaiConfig(
+        llm=LLMConfig(
+            default_provider="openai",
+            providers={
+                "openai": OpenAIConfig(
+                    auth_mode="oauth",
+                    profile_id="default",
+                    oauth_client_id="client-123",
+                    default_model="gpt-5-mini",
+                )
+            },
+        ),
+        roles=RolesConfig(default_role="default"),
+    )
+
+    config.save_config(test_config)
+    loaded = config.load_config()
+    openai_cfg = loaded.llm.get_provider("openai")
+    assert isinstance(openai_cfg, OpenAIConfig)
+    assert openai_cfg.auth_mode == "oauth"
+    assert openai_cfg.profile_id == "default"
+    assert openai_cfg.oauth_client_id == "client-123"
+
+
+def test_openai_oauth_defaults_profile_when_missing():
+    """Older OAuth config without profile_id should default to 'default'."""
+    from whai.configuration.user_config import OpenAIConfig
+
+    cfg = OpenAIConfig.from_dict(
+        {
+            "auth_mode": "oauth",
+            "oauth_client_id": "client-xyz",
+            "default_model": "gpt-5-mini",
+        }
+    )
+
+    assert cfg.auth_mode == "oauth"
+    assert cfg.profile_id == "default"
+
+

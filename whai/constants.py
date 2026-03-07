@@ -29,12 +29,24 @@ GPT5_MODEL_PREFIX = "gpt-5"
 DEFAULT_AZURE_API_VERSION = "2023-05-15"
 DEFAULT_OLLAMA_API_BASE = "http://localhost:11434"
 DEFAULT_LM_STUDIO_API_BASE = "http://localhost:1234/v1"
+DEFAULT_OPENAI_AUTH_MODE = "api_key"
+DEFAULT_OPENAI_OAUTH_PROFILE_ID = "default"
+DEFAULT_OPENAI_OAUTH_AUTHORIZE_URL = "https://auth.openai.com/oauth/authorize"
+DEFAULT_OPENAI_OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token"
+DEFAULT_OPENAI_OAUTH_SCOPES = "openid profile offline_access"
+DEFAULT_OPENAI_OAUTH_CALLBACK_HOST = "127.0.0.1"
+DEFAULT_OPENAI_OAUTH_CALLBACK_PORT = 1455
+ENV_OPENAI_OAUTH_CLIENT_ID = "OPENAI_OAUTH_CLIENT_ID"
 
 # Provider configuration defaults
 PROVIDER_DEFAULTS = {
     "openai": {
-        "fields": ["api_key", "default_model"],
-        "defaults": {"default_model": DEFAULT_MODEL_OPENAI},
+        "fields": ["auth_mode", "api_key", "default_model", "profile_id", "oauth_client_id"],
+        "defaults": {
+            "auth_mode": DEFAULT_OPENAI_AUTH_MODE,
+            "default_model": DEFAULT_MODEL_OPENAI,
+            "profile_id": DEFAULT_OPENAI_OAUTH_PROFILE_ID,
+        },
     },
     "anthropic": {
         "fields": ["api_key", "default_model"],

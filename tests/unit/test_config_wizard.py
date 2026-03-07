@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 
 from whai.cli.main import app
 from whai.configuration import user_config
-from whai.configuration.config_wizard import run_wizard
+from whai.configuration.config_wizard import _get_provider_config, run_wizard
 from whai.configuration.user_config import load_config
 
 # Use tomllib for Python 3.11+, tomli for older versions
@@ -65,7 +65,7 @@ def test_wizard_quick_setup_creates_config(config_dir):
 
     # Mock typer.prompt for API key and model
     prompt_call_count = [0]
-    prompt_responses = ["test-api-key-123", "gpt-5-mini"]
+    prompt_responses = ["api_key", "test-api-key-123", "gpt-5-mini"]
 
     def mock_prompt(*args, **kwargs):
         """Mock typer.prompt."""
@@ -386,7 +386,11 @@ def test_wizard_reset_creates_backup_and_resets_config(config_dir):
 
     # Mock typer.prompt for reset confirmation and then provider setup
     prompt_call_count = [0]
-    prompt_responses = ["new-key-123", "gpt-5-mini"]  # API key, model after reset
+    prompt_responses = [
+        "api_key",
+        "new-key-123",
+        "gpt-5-mini",
+    ]  # auth mode, API key, model after reset
 
     def mock_prompt(*args, **kwargs):
         """Mock typer.prompt."""
@@ -668,3 +672,50 @@ def test_wizard_edit_existing_provider_preserves_defaults(config_dir):
     assert openai_provider is not None
     assert openai_provider.default_model == "gpt-5-mini"
     # API key behavior depends on wizard implementation; test verifies config was updated
+
+
+def test_get_provider_config_openai_oauth_copy_paste_flow(config_dir):
+    """OpenAI OAuth flow should accept pasted callback URL and store profile tokens."""
+    from whai.configuration.user_config import OpenAIConfig
+
+    validation_result = MagicMock()
+    validation_result.is_valid = True
+    validation_result.issues = []
+
+    prompts = iter(
+        [
+            "oauth",  # auth_mode
+            "gpt-5-mini",  # default_model
+            "default",  # profile_id
+            "client-123",  # oauth_client_id
+            "http://127.0.0.1:1455/auth/callback?code=abc123&state=state123",  # pasted callback URL
+        ]
+    )
+
+    with (
+        patch("typer.prompt", side_effect=lambda *args, **kwargs: next(prompts)),
+        patch("typer.confirm", return_value=False),
+        patch("whai.auth.openai_oauth.create_oauth_state", return_value="state123"),
+        patch(
+            "whai.auth.openai_oauth.exchange_code_for_tokens",
+            return_value={
+                "access_token": "token-abc",
+                "refresh_token": "refresh-abc",
+                "expires_at": 9999999999,
+                "token_type": "Bearer",
+            },
+        ),
+        patch("whai.auth.storage.upsert_openai_profile") as mock_upsert,
+        patch(
+            "whai.configuration.user_config.OpenAIConfig.validate",
+            return_value=validation_result,
+        ),
+        patch("whai.ui.output.console.print"),
+    ):
+        provider_cfg = _get_provider_config("openai")
+
+    assert isinstance(provider_cfg, OpenAIConfig)
+    assert provider_cfg.auth_mode == "oauth"
+    assert provider_cfg.profile_id == "default"
+    assert provider_cfg.oauth_client_id == "client-123"
+    mock_upsert.assert_called_once()

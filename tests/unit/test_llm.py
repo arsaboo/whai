@@ -236,6 +236,76 @@ def test_configure_api_keys_openai_sets_openai_key():
     assert "LM_STUDIO_API_BASE" not in os.environ
 
 
+def test_configure_api_keys_openai_oauth_uses_stored_access_token():
+    """OpenAI OAuth mode should read access token from auth profile store."""
+    _clear_provider_env_vars()
+
+    config = create_test_config(
+        default_provider="openai",
+        default_model="gpt-5-mini",
+        providers={
+            "openai": OpenAIConfig(
+                auth_mode="oauth",
+                profile_id="default",
+                oauth_client_id="client-123",
+                default_model="gpt-5-mini",
+            )
+        },
+    )
+
+    with patch("whai.auth.storage.get_openai_profile") as mock_get_profile:
+        mock_get_profile.return_value = {
+            "access_token": "oauth-access-token",
+            "refresh_token": "oauth-refresh-token",
+            "expires_at": 9999999999,
+        }
+
+        llm.LLMProvider(config, perf_logger=create_test_perf_logger())
+
+    assert os.environ.get("OPENAI_API_KEY") == "oauth-access-token"
+
+
+def test_configure_api_keys_openai_oauth_refreshes_when_expired():
+    """OpenAI OAuth mode should refresh and persist tokens when expired."""
+    _clear_provider_env_vars()
+
+    config = create_test_config(
+        default_provider="openai",
+        default_model="gpt-5-mini",
+        providers={
+            "openai": OpenAIConfig(
+                auth_mode="oauth",
+                profile_id="default",
+                oauth_client_id="client-123",
+                default_model="gpt-5-mini",
+            )
+        },
+    )
+
+    with (
+        patch("whai.auth.storage.get_openai_profile") as mock_get_profile,
+        patch("whai.auth.openai_oauth.refresh_openai_tokens") as mock_refresh,
+        patch("whai.auth.storage.upsert_openai_profile") as mock_upsert,
+    ):
+        mock_get_profile.return_value = {
+            "access_token": "expired-access",
+            "refresh_token": "oauth-refresh-token",
+            "expires_at": 1,
+        }
+        mock_refresh.return_value = {
+            "access_token": "new-oauth-access",
+            "refresh_token": "new-oauth-refresh",
+            "expires_at": 9999999999,
+            "token_type": "Bearer",
+        }
+
+        llm.LLMProvider(config, perf_logger=create_test_perf_logger())
+
+        mock_refresh.assert_called_once()
+        mock_upsert.assert_called_once()
+    assert os.environ.get("OPENAI_API_KEY") == "new-oauth-access"
+
+
 def test_configure_api_keys_anthropic_sets_anthropic_key():
     """Test that Anthropic provider sets ANTHROPIC_API_KEY environment variable."""
     _clear_provider_env_vars()

@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import time
 from typing import Any, Dict, Generator, List, Optional, Union
 
 from whai.configuration.user_config import WhaiConfig
@@ -115,8 +116,54 @@ class LLMProvider:
         provider_cfg = self.config.llm.get_provider(self.configured_provider)
         
         if self.configured_provider == "openai":
-            if provider_cfg and provider_cfg.api_key:
-                os.environ["OPENAI_API_KEY"] = provider_cfg.api_key
+            if provider_cfg:
+                auth_mode = getattr(provider_cfg, "auth_mode", "api_key")
+                if auth_mode == "oauth":
+                    profile_id = getattr(provider_cfg, "profile_id", None) or "default"
+                    oauth_client_id = getattr(provider_cfg, "oauth_client_id", None)
+                    try:
+                        from whai.auth.openai_oauth import refresh_openai_tokens
+                        from whai.auth.storage import get_openai_profile, upsert_openai_profile
+
+                        profile = get_openai_profile(profile_id)
+                        if not profile:
+                            raise RuntimeError(
+                                f"OpenAI OAuth profile '{profile_id}' not found. "
+                                "Run 'whai --interactive-config' and configure OpenAI OAuth again."
+                            )
+
+                        access_token = profile.get("access_token")
+                        refresh_token = profile.get("refresh_token")
+                        expires_at = int(profile.get("expires_at", 0) or 0)
+
+                        # Refresh slightly early to avoid near-expiry race conditions.
+                        now = int(time.time())
+                        if expires_at <= now + 60:
+                            if not refresh_token or not oauth_client_id:
+                                raise RuntimeError(
+                                    "OpenAI OAuth token expired and cannot be refreshed (missing refresh_token or oauth_client_id). "
+                                    "Run 'whai --interactive-config' to sign in again."
+                                )
+                            refreshed = refresh_openai_tokens(
+                                oauth_client_id=oauth_client_id,
+                                refresh_token=refresh_token,
+                            )
+                            # Preserve existing fields when response omits some values.
+                            profile.update({k: v for k, v in refreshed.items() if v is not None})
+                            upsert_openai_profile(profile_id, profile)
+                            access_token = profile.get("access_token")
+
+                        if not access_token:
+                            raise RuntimeError(
+                                f"OpenAI OAuth profile '{profile_id}' has no access token. "
+                                "Run 'whai --interactive-config' to sign in again."
+                            )
+
+                        os.environ["OPENAI_API_KEY"] = access_token
+                    except Exception as e:
+                        raise RuntimeError(f"Failed to initialize OpenAI OAuth token: {e}") from e
+                elif provider_cfg.api_key:
+                    os.environ["OPENAI_API_KEY"] = provider_cfg.api_key
         
         elif self.configured_provider == "anthropic":
             if provider_cfg and provider_cfg.api_key:

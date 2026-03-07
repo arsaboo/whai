@@ -258,6 +258,25 @@ api_key = "sk-proj-your-key-here"
 default_model = "gpt-5-mini"
 ```
 
+### OpenAI OAuth (wizard-only)
+
+`whai` also supports OpenAI OAuth as an alternative to API keys.
+
+Run:
+
+```zsh
+whai --interactive-config
+```
+
+Then for `openai`, choose `OAuth (copy/paste URL flow)`.
+
+Notes:
+- This flow is headless-friendly: the wizard prints the OAuth URL, and you can copy/paste the final callback URL (or auth code) back into the terminal.
+- Set `OPENAI_OAUTH_CLIENT_ID` before running the wizard, or enter the OAuth client id when prompted.
+- OAuth tokens are stored in `~/.config/whai/auth-profiles.json` (or your platform-equivalent config dir).
+- If your access token expires, `whai` automatically attempts refresh using the stored refresh token.
+- ChatGPT subscription usage in third-party tools depends on OpenAI account entitlements/policy.
+
 Get API keys from:
 - [OpenAI Platform](https://platform.openai.com/api-keys)
 - [Anthropic Console](https://console.anthropic.com/)

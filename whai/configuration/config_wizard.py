@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+import webbrowser
 from typing import Any, Dict, Optional
 
 import typer
@@ -25,6 +26,8 @@ from whai.configuration.user_config import (
 from whai.constants import (
     CONFIG_FILENAME,
     DEFAULT_PROVIDER,
+    DEFAULT_OPENAI_OAUTH_PROFILE_ID,
+    ENV_OPENAI_OAUTH_CLIENT_ID,
     DEFAULT_ROLE_NAME,
     PROVIDER_DEFAULTS,
 )
@@ -65,7 +68,30 @@ def _get_provider_config(
 
     print_section(f"Configuring {provider}")
 
+    # OpenAI has a custom auth flow: API key or OAuth.
+    if provider == "openai":
+        default_auth_mode = "api_key"
+        if existing_config and hasattr(existing_config, "auth_mode"):
+            default_auth_mode = getattr(existing_config, "auth_mode") or "api_key"
+
+        auth_mode = typer.prompt(
+            "auth_mode (api_key/oauth)",
+            default=default_auth_mode,
+        ).strip().lower()
+        if auth_mode not in ("api_key", "oauth"):
+            warn("Invalid auth mode entered. Falling back to 'api_key'.")
+            auth_mode = "api_key"
+        config_data["auth_mode"] = auth_mode
+
     for field in provider_info["fields"]:
+        # OpenAI OAuth mode does not require entering an API key.
+        if provider == "openai" and field == "api_key" and config_data.get("auth_mode") == "oauth":
+            continue
+
+        # OpenAI OAuth-only fields are handled below.
+        if provider == "openai" and field in ("profile_id", "oauth_client_id", "auth_mode"):
+            continue
+
         # Use existing config value if available, otherwise use provider default
         if existing_config and hasattr(existing_config, field):
             existing_value = getattr(existing_config, field)
@@ -137,6 +163,77 @@ def _get_provider_config(
 
         if value != "":  # Only add non-empty values
             config_data[field] = value
+
+    if provider == "openai" and config_data.get("auth_mode") == "oauth":
+        default_profile = DEFAULT_OPENAI_OAUTH_PROFILE_ID
+        if existing_config and hasattr(existing_config, "profile_id"):
+            existing_profile = getattr(existing_config, "profile_id")
+            if existing_profile:
+                default_profile = existing_profile
+
+        profile_id = typer.prompt("profile_id", default=default_profile).strip()
+        if not profile_id:
+            profile_id = DEFAULT_OPENAI_OAUTH_PROFILE_ID
+        config_data["profile_id"] = profile_id
+
+        env_client_id = os.environ.get(ENV_OPENAI_OAUTH_CLIENT_ID, "")
+        default_client_id = env_client_id
+        if existing_config and hasattr(existing_config, "oauth_client_id"):
+            existing_client_id = getattr(existing_config, "oauth_client_id")
+            if existing_client_id:
+                default_client_id = existing_client_id
+
+        oauth_client_id = typer.prompt(
+            "oauth_client_id",
+            default=default_client_id,
+        ).strip()
+        if not oauth_client_id:
+            failure(
+                "OAuth client id is required for OpenAI OAuth. "
+                f"Set {ENV_OPENAI_OAUTH_CLIENT_ID} or enter it in the wizard."
+            )
+            raise typer.Exit(1)
+        config_data["oauth_client_id"] = oauth_client_id
+
+        from whai.auth import openai_oauth
+        from whai.auth.storage import upsert_openai_profile
+
+        code_verifier = openai_oauth.create_pkce_verifier()
+        code_challenge = openai_oauth.create_pkce_challenge(code_verifier)
+        state = openai_oauth.create_oauth_state()
+        auth_url = openai_oauth.build_openai_authorize_url(
+            oauth_client_id=oauth_client_id,
+            code_challenge=code_challenge,
+            state=state,
+        )
+
+        info("\nOpenAI OAuth login (headless-friendly):")
+        info("1) Open this URL in any browser and sign in:")
+        typer.echo(auth_url)
+        info("2) After consent, copy the final redirected URL from the browser address bar.")
+        info("3) Paste that full URL below (or paste the raw authorization code).")
+
+        if typer.confirm("Try opening the URL in your default browser now?", default=False):
+            try:
+                webbrowser.open(auth_url)
+            except Exception:
+                warn("Could not open browser automatically. Continue with manual copy/paste.")
+
+        try:
+            pasted = typer.prompt("Paste callback URL or auth code")
+            auth_code = openai_oauth.parse_code_from_user_input(
+                pasted, expected_state=state
+            )
+            token_bundle = openai_oauth.exchange_code_for_tokens(
+                oauth_client_id=oauth_client_id,
+                authorization_code=auth_code,
+                code_verifier=code_verifier,
+            )
+            upsert_openai_profile(profile_id, token_bundle)
+            success(f"OpenAI OAuth profile '{profile_id}' saved.")
+        except Exception as e:
+            failure(f"OpenAI OAuth login failed: {e}")
+            raise typer.Exit(1)
 
     # Create the appropriate ProviderConfig subclass instance
     try:

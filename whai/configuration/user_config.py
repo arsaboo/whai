@@ -18,6 +18,8 @@ import tomli_w
 from whai.constants import (
     CONFIG_FILENAME,
     DEFAULT_MODEL_OPENAI,
+    DEFAULT_OPENAI_AUTH_MODE,
+    DEFAULT_OPENAI_OAUTH_PROFILE_ID,
     DEFAULT_PROVIDER,
     DEFAULT_ROLE_NAME,
     ENV_WHAI_TEST_MODE,
@@ -383,12 +385,76 @@ class ProviderConfig:
 class OpenAIConfig(ProviderConfig):
     """Configuration for OpenAI provider."""
 
+    auth_mode: str = DEFAULT_OPENAI_AUTH_MODE
+    profile_id: Optional[str] = None
+    oauth_client_id: Optional[str] = None
     provider_name: str = "openai"
 
     def _validate_required_fields(self) -> None:
         """Validate OpenAI-specific requirements."""
-        self._validate_non_empty_field("api_key", self.api_key)
         self._validate_non_empty_field("default_model", self.default_model)
+
+        if self.auth_mode not in ("api_key", "oauth"):
+            raise InvalidProviderConfigError(
+                f"openai provider 'auth_mode' must be 'api_key' or 'oauth', got: {self.auth_mode}"
+            )
+
+        if self.auth_mode == "api_key":
+            self._validate_non_empty_field("api_key", self.api_key)
+            return
+
+        # OAuth mode
+        profile_id = self.profile_id or DEFAULT_OPENAI_OAUTH_PROFILE_ID
+        if not profile_id.strip():
+            raise InvalidProviderConfigError("openai provider requires 'profile_id' for OAuth mode")
+        self.profile_id = profile_id.strip()
+        self._validate_non_empty_field("oauth_client_id", self.oauth_client_id)
+
+    def get_summary_fields(self) -> Dict[str, str]:
+        """Get OpenAI-specific fields for summary."""
+        fields = {"model": self.default_model or "MISSING", "auth": self.auth_mode}
+        if self.auth_mode == "api_key":
+            fields["key"] = self._get_masked_key(self.api_key)
+        else:
+            fields["profile"] = self.profile_id or "MISSING"
+            fields["oauth_client"] = (
+                "configured" if self.oauth_client_id else "MISSING"
+            )
+        return fields
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert OpenAI config to dictionary for TOML serialization."""
+        result = super().to_dict()
+        result["auth_mode"] = self.auth_mode
+        if self.profile_id is not None:
+            result["profile_id"] = self.profile_id
+        if self.oauth_client_id is not None:
+            result["oauth_client_id"] = self.oauth_client_id
+        return result
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "OpenAIConfig":
+        """Create OpenAIConfig from dictionary, supporting OAuth fields."""
+        auth_mode = data.get("auth_mode", DEFAULT_OPENAI_AUTH_MODE)
+        profile_id = data.get("profile_id")
+        oauth_client_id = data.get("oauth_client_id")
+
+        # Backward compatibility for older configs with api_key only
+        if not auth_mode:
+            auth_mode = DEFAULT_OPENAI_AUTH_MODE
+
+        if auth_mode == "oauth" and not profile_id:
+            profile_id = DEFAULT_OPENAI_OAUTH_PROFILE_ID
+
+        return cls(
+            api_key=data.get("api_key"),
+            api_base=data.get("api_base"),
+            api_version=data.get("api_version"),
+            default_model=data.get("default_model"),
+            auth_mode=auth_mode,
+            profile_id=profile_id,
+            oauth_client_id=oauth_client_id,
+        )
 
 
 @dataclass

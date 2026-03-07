@@ -1,7 +1,8 @@
 """Conversation loop execution for whai."""
 
 import json
-from typing import List, Optional
+import re
+from typing import Any, Dict, List, Optional
 
 from whai import ui
 from whai.constants import TOOL_OUTPUT_MAX_TOKENS
@@ -15,8 +16,52 @@ from whai.utils import PerformanceLogger
 logger = get_logger(__name__)
 
 
+NO_TOOL_CALL_RECOVERY_MAX_RETRIES = 1
+NO_TOOL_CALL_RECOVERY_HINT = (
+    "Your previous response suggested running a shell command, but you did not emit a tool call. "
+    "If another command is needed, call the execute_shell tool with a valid JSON argument containing a non-empty 'command' field. "
+    "If no command is needed and the task is complete, reply with a final answer only."
+)
+
+
+def _looks_like_continuation_without_tool_call(text: str) -> bool:
+    """Heuristic: detect when assistant text implies another command should be run."""
+    if not text:
+        return False
+
+    normalized = " ".join(text.lower().split())
+    continuation_patterns = (
+        r"\bi(?:\s*'ll|\s+will)\s+(?:run|check|inspect|look|try|execute|analyze|dig)\b",
+        r"\blet\s+me\s+(?:run|check|inspect|look|try|execute|analyze|dig)\b",
+        r"\bnext\s+i(?:\s*'ll|\s+will)\b",
+        r"\bi\s+need\s+to\s+(?:run|check|inspect|look)\b",
+    )
+    return any(re.search(pattern, normalized) for pattern in continuation_patterns)
+
+
+def _looks_like_final_answer(text: str) -> bool:
+    """Heuristic: detect whether the assistant likely intended to finish."""
+    if not text:
+        return False
+
+    normalized = " ".join(text.lower().split())
+    final_markers = (
+        "task is complete",
+        "you're all set",
+        "that should do it",
+        "done.",
+        "done!",
+        "no further action",
+        "no more commands",
+    )
+    return any(marker in normalized for marker in final_markers)
+
+
 def run_conversation_loop(
-    llm_provider: LLMProvider, messages: List[dict], timeout: int, command_string: Optional[str] = None
+    llm_provider: LLMProvider,
+    messages: List[Dict[str, Any]],
+    timeout: int,
+    command_string: Optional[str] = None,
 ) -> None:
     """
     Run the main conversation loop with the LLM.
@@ -35,6 +80,8 @@ def run_conversation_loop(
         session_logger.log_command(command_string)
     
     loop_iteration = 0
+    no_tool_call_retries = 0
+    next_tool_choice = None
     while True:
         loop_iteration += 1
         loop_perf = PerformanceLogger(f"Conversation Loop (iteration {loop_iteration})")
@@ -43,9 +90,17 @@ def run_conversation_loop(
         try:
             # Send to LLM with streaming; show spinner until first chunk arrives
             with ui.spinner("Thinking"):
-                response_stream = llm_provider.send_message(messages, stream=True)
-                response_chunks = []
-                first_chunk = None
+                response = llm_provider.send_message(
+                    messages,
+                    stream=True,
+                    tool_choice=next_tool_choice,
+                )
+                next_tool_choice = None
+                if isinstance(response, dict):
+                    raise RuntimeError("Expected streaming response but received non-streaming payload")
+                response_stream = response
+                response_chunks: List[Dict[str, Any]] = []
+                first_chunk: Optional[Dict[str, Any]] = None
                 for chunk in response_stream:
                     first_chunk = chunk
                     break
@@ -65,6 +120,9 @@ def run_conversation_loop(
 
             # Extract tool calls from chunks
             tool_calls = [c for c in response_chunks if c["type"] == "tool_call"]
+            assistant_content = "".join(
+                c["content"] for c in response_chunks if c["type"] == "text"
+            )
             logger.debug(
                 "Received %d tool calls from stream",
                 len(tool_calls),
@@ -73,9 +131,51 @@ def run_conversation_loop(
             loop_perf.log_section("Response parsing", extra_info={"tool_calls": len(tool_calls)})
 
             if not tool_calls:
+                # If model text implies another command but no tool call was emitted,
+                # retry once with explicit tool-use guidance.
+                if (
+                    no_tool_call_retries < NO_TOOL_CALL_RECOVERY_MAX_RETRIES
+                    and assistant_content
+                    and _looks_like_continuation_without_tool_call(assistant_content)
+                    and not _looks_like_final_answer(assistant_content)
+                ):
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "content": assistant_content,
+                        }
+                    )
+                    messages.append(
+                        {
+                            "role": "system",
+                            "content": NO_TOOL_CALL_RECOVERY_HINT,
+                        }
+                    )
+                    no_tool_call_retries += 1
+                    next_tool_choice = "required"
+                    ui.warn(
+                        "Model response indicated more actions but contained no tool call. "
+                        "Requesting a corrected tool call."
+                    )
+                    loop_perf.log_complete(extra_info={"ended": "tool_recovery_retry"})
+                    continue
+
+                if (
+                    assistant_content
+                    and _looks_like_continuation_without_tool_call(assistant_content)
+                    and no_tool_call_retries >= NO_TOOL_CALL_RECOVERY_MAX_RETRIES
+                ):
+                    ui.info(
+                        "Model did not produce a runnable tool call after retry. "
+                        "Ending conversation."
+                    )
+
                 # No tool calls, conversation is done
                 loop_perf.log_complete(extra_info={"ended": "no_tool_calls"})
                 break
+
+            # Reset retry budget after a normal tool-call turn.
+            no_tool_call_retries = 0
 
             # Process each tool call
             tool_results = []
@@ -84,6 +184,16 @@ def run_conversation_loop(
                     command = tool_call["arguments"].get("command", "")
 
                     if not command:
+                        tool_results.append(
+                            {
+                                "tool_call_id": tool_call["id"],
+                                "output": "Invalid execute_shell tool call: missing or empty 'command' argument.",
+                            }
+                        )
+                        logger.warning(
+                            "Skipping execute_shell tool call with empty command (id=%s)",
+                            tool_call["id"],
+                        )
                         continue
 
                     # Get user approval
@@ -202,12 +312,7 @@ def run_conversation_loop(
                 break
 
             # Build assistant message for history
-            # Collect text content
-            assistant_content = "".join(
-                c["content"] for c in response_chunks if c["type"] == "text"
-            )
-
-            assistant_message = {
+            assistant_message: Dict[str, Any] = {
                 "role": "assistant",
                 "content": assistant_content,
             }

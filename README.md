@@ -1,4 +1,4 @@
-# Whai - A Terminal assistant for developers who want control
+# Whai - The developer's Terminal Assistant
 
 [![PyPI version](https://badge.fury.io/py/whai.svg)](https://badge.fury.io/py/whai)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -17,10 +17,10 @@ https://github.com/user-attachments/assets/cbe834f0-2437-405b-9c95-88f02f6f69d9
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Supported Providers](#supported-providers)
+- [MCP (Model Context Protocol) Support](#mcp-model-context-protocol-support)
 - [Key Features](#key-features)
 - [FAQ](#faq)
 - [Contributing](#contributing)
-- [Changelog](#changelog)
 - [Acknowledgments](#acknowledgments)
 
 ## What is it
@@ -43,7 +43,8 @@ When you get stuck, need a command, or encounter an error, just call `whai` for 
     `> whai "Is this resource usage normal?"`
 
 * **Requires Approval:** Every `whai` command requires your explicit `[a]pprove` / `[r]eject` confirmation.
-* **Model-Agnostic:** Use models from OpenAI, Gemini, Anthropic, local Ollama models, and more.
+* **MCP Tool Integration:** Connect local [MCP](https://modelcontextprotocol.io/) servers to extend `whai` with additional tools like file operations, database queries, or API integrations, all with the same approval workflow.
+* **Model-Agnostic:** Use models from OpenAI, Gemini, Mistral, Anthropic, local Ollama models, and more.
 
 ## Quick Examples
 
@@ -258,6 +259,7 @@ api_key = "sk-proj-your-key-here"
 default_model = "gpt-5-mini"
 ```
 
+Make sure to use a model that is capable of calling tools. Most frontier models have this functionality. For local models, you can look at the LMStudio models tagged for tool use [here](https://lmstudio.ai/models?filter=tools).
 Get API keys from:
 - [OpenAI Platform](https://platform.openai.com/api-keys)
 - [Anthropic Console](https://console.anthropic.com/)
@@ -323,6 +325,64 @@ Each provider must be configured in your `~/.config/whai/config.toml` file. You 
 
 > **Note:** `whai` uses [LiteLLM](https://github.com/BerriAI/litellm) for multi-provider support. Additional providers from [LiteLLM's supported providers list](https://docs.litellm.ai/docs/providers) can be added upon request.
 
+## MCP (Model Context Protocol) Support
+
+`whai` supports connecting to local MCP servers to extend functionality with additional tools. MCP servers can provide tools for file operations, database queries, API integrations, and more.
+
+### Setting Up MCP Servers
+
+1. Create `~/.config/whai/mcp.json` with your MCP server configuration:
+
+```json
+{
+  "mcpServers": {
+    "server-name": {
+      "command": "command-to-run",
+      "args": ["arg1", "arg2"],
+      "env": {"KEY": "value"},
+      "name": "Display Name (optional)",
+      "requires_approval": true
+    }
+  }
+}
+```
+
+2. Example configuration for the time server:
+
+```json
+{
+  "mcpServers": {
+    "time-server": {
+      "command": "uvx",
+      "args": ["mcp-server-time"],
+      "env": {},
+      "name": "Time Server",
+      "requires_approval": false
+    }
+  }
+}
+```
+
+**Configuration fields:**
+- `command` (required): Command to run the MCP server
+- `args` (optional): Arguments to pass to the command
+- `env` (optional): Environment variables for the server
+- `name` (optional): Display name shown in tool approval prompts
+- `requires_approval` (optional, default: `true`): Whether to prompt for approval before executing tools from this server
+
+MCP support is opt-in: if `mcp.json` doesn't exist, MCP is disabled. Tools from MCP servers are automatically discovered and made available to the LLM alongside the built-in `execute_shell` tool.
+
+To disable MCP for a single run, use the `--no-mcp` flag:
+```
+whai "my question" --no-mcp
+```
+
+To disable MCP persistently, change in `config.toml`:
+```toml
+[mcp]
+enabled = false
+```
+
 ## Key Features
 
 ### Roles
@@ -387,6 +447,16 @@ The default role is defined in the config.
 - tmux scrollback (recommended): Full commands + output context
 - Recorded shell sessions: Full commands + output when using `whai shell`
 - Shell history (fallback): Recent commands only when not in tmux
+
+#### Targeting another pane (tmux)
+
+In a tmux session with multiple panes, you can run `whai` in one pane and have it use context from, and run approved commands in, another pane (e.g. one pane SSH'd to a server). Use `--target` or `-T` with the pane number (see pane numbers with `Ctrl+b q`):
+
+```zsh
+whai -T 1 "check disk space"
+```
+
+Set `WHAI_TARGET=1` in your environment to use a default target pane so you can omit the flag.
 
 #### Recorded Shell Sessions
 

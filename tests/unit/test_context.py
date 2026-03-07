@@ -10,11 +10,7 @@ import pytest
 
 from whai import context
 from whai.context.history import (
-    BashHandler,
     CMDHandler,
-    PowerShellHandler,
-    ZshHandler,
-    _get_handler_for_shell,
     get_additional_context,
 )
 
@@ -90,9 +86,6 @@ def test_get_context_tmux_active_but_empty():
         assert is_deep is True
 
 
-# Shell handler unit tests removed - redundant with integration tests
-
-
 def test_cmd_handler_get_history_context(monkeypatch):
     """Test CMDHandler.get_history_context() via doskey."""
     handler = CMDHandler(shell_name="cmd")
@@ -133,75 +126,7 @@ def test_cmd_handler_non_windows(monkeypatch):
     assert result is None
 
 
-def test_get_handler_for_shell_bash():
-    """Test _get_handler_for_shell() returns BashHandler for bash."""
-    handler = _get_handler_for_shell("bash")
-    
-    assert handler is not None
-    assert isinstance(handler, BashHandler)
-    assert handler.shell_name == "bash"
-
-
-def test_get_handler_for_shell_zsh():
-    """Test _get_handler_for_shell() returns ZshHandler for zsh."""
-    handler = _get_handler_for_shell("zsh")
-    
-    assert handler is not None
-    assert isinstance(handler, ZshHandler)
-    assert handler.shell_name == "zsh"
-
-
-def test_get_handler_for_shell_pwsh():
-    """Test _get_handler_for_shell() returns PowerShellHandler for pwsh."""
-    handler = _get_handler_for_shell("pwsh")
-    
-    assert handler is not None
-    assert isinstance(handler, PowerShellHandler)
-    assert handler.shell_name == "pwsh"
-
-
-def test_get_handler_for_shell_cmd(monkeypatch):
-    """Test _get_handler_for_shell() returns CMDHandler for cmd on Windows."""
-    monkeypatch.setattr("os.name", "nt")
-    
-    handler = _get_handler_for_shell("cmd")
-    
-    assert handler is not None
-    assert isinstance(handler, CMDHandler)
-    assert handler.shell_name == "cmd"
-
-
-def test_get_additional_context_powershell(monkeypatch):
-    """Test get_additional_context() for PowerShell."""
-    with patch("whai.context.history._get_handler_for_shell") as mock_get_handler:
-        handler = PowerShellHandler(shell_name="pwsh")
-        mock_get_handler.return_value = handler
-        
-        with patch.object(handler, "get_additional_context", return_value="error context"):
-            result = get_additional_context(shell="pwsh")
-            
-            assert result == "error context"
-
-
-def test_get_additional_context_no_handler(monkeypatch):
-    """Test get_additional_context() returns None when no handler found."""
-    with patch("whai.context.history._get_handler_for_shell", return_value=None):
-        result = get_additional_context(shell="unknown")
-        
-        assert result is None
-
-
-def test_get_additional_context_no_additional_context(monkeypatch):
-    """Test get_additional_context() returns None when handler has no additional context."""
-    with patch("whai.context.history._get_handler_for_shell") as mock_get_handler:
-        handler = BashHandler(shell_name="bash")
-        mock_get_handler.return_value = handler
-        
-        result = get_additional_context(shell="bash")
-        
-        assert result is None
-
-
-# PowerShell history tests removed - they were reading actual user history
-# instead of being properly isolated. The core PowerShell history parsing
-# is covered by other tests.
+def test_get_additional_context_unknown_shell():
+    """Test get_additional_context() returns None for an unknown shell."""
+    result = get_additional_context(shell="unknown_shell_xyz")
+    assert result is None

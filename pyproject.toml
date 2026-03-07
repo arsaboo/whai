@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "whai"
-version = "0.9.0"
+version = "0.11.2"
 description = "A lightweight, Python-based CLI tool that integrates LLMs directly into your terminal"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -19,6 +19,7 @@ dependencies = [
     "tomli-w>=1.0.0",
     "tomli>=2.0.0; python_version < '3.11'",
     "rich>=13.7.0",
+    "mcp>=1.22.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -48,6 +49,14 @@ filterwarnings = [
     "ignore:There is no current event loop:DeprecationWarning",
     "ignore:Pydantic serializer warnings:UserWarning",
     "ignore:Use 'content=<...>' to upload raw bytes/text content:DeprecationWarning",
+    # Pydantic deprecation warnings from litellm (third-party library we can't fix)
+    "ignore::pydantic.PydanticDeprecatedSince20",
+    "ignore::pydantic.PydanticDeprecatedSince211",
+    "ignore:The `dict` method is deprecated.*:pydantic.PydanticDeprecatedSince20",
+    "ignore:Accessing the 'model_fields' attribute.*:pydantic.PydanticDeprecatedSince211",
+    "ignore:Accessing the 'model_computed_fields' attribute.*:pydantic.PydanticDeprecatedSince211",
+    # LiteLLM uses asyncio.iscoroutinefunction (deprecated in 3.14, removed in 3.16)
+    "ignore:.*asyncio.iscoroutinefunction.*:DeprecationWarning",
 ]
 
 [[tool.uv.index]]
@@ -63,4 +72,6 @@ dev = [
     "pytest-cov>=5.0.0",
     "pytest-mock>=3.14.1",
     "ruff>=0.14.3",
+    "nest-asyncio2>=1.6.0",
+    "anyio>=4.11.0",
 ]

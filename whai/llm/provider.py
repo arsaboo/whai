@@ -1,5 +1,6 @@
 """LLM provider wrapper using LiteLLM."""
 
+import asyncio
 import json
 import os
 import re
@@ -89,6 +90,9 @@ class LLMProvider:
         # do not support it and should omit it entirely by default.
         self.temperature = temperature
 
+        # MCP manager (set by executor when MCP is enabled)
+        self._mcp_manager = None
+
         # Set API keys for LiteLLM
         self._configure_api_keys()
         logger.debug(
@@ -162,6 +166,7 @@ class LLMProvider:
         tools: List[Dict[str, Any]] = None,
         stream: bool = True,
         tool_choice: Any = None,
+        mcp_loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> Union[Generator[Dict[str, Any], None, None], Dict[str, Any]]:
         """
         Send a message to the LLM and get a response.
@@ -173,6 +178,8 @@ class LLMProvider:
             stream: Whether to stream the response (default True).
             tool_choice: Optional tool selection directive (e.g., 'auto', 'none', or
                 a function spec). Passed through to the underlying provider when set.
+            mcp_loop: Optional event loop for MCP operations. If provided, MCP tool
+                     discovery will use this loop instead of creating a new one.
 
         Returns:
             If stream=True: Generator yielding response chunks.
@@ -186,6 +193,11 @@ class LLMProvider:
         # Default to using the execute_shell tool
         if tools is None:
             tools = [EXECUTE_SHELL_TOOL]
+
+        # Add MCP tools if available
+        mcp_tools = self._get_mcp_tools(mcp_loop=mcp_loop)
+        if mcp_tools:
+            tools = tools + mcp_tools
 
         try:
             # Only pass tools parameter if tools list is not empty
@@ -422,3 +434,29 @@ class LLMProvider:
 
             friendly = _friendly_message(e)
             raise RuntimeError(friendly)
+
+    def _get_mcp_tools(self, mcp_loop: Optional[asyncio.AbstractEventLoop] = None) -> List[Dict[str, Any]]:
+        """
+        Get MCP tools from the manager set up by the executor.
+
+        Args:
+            mcp_loop: Event loop for MCP operations. Required to maintain
+                     connection state across calls.
+
+        Returns:
+            List of MCP tool definitions in OpenAI function format, or empty list.
+
+        Raises:
+            RuntimeError: If MCP server initialization or tool listing fails.
+        """
+        if self._mcp_manager is None or mcp_loop is None or mcp_loop.is_closed():
+            return []
+
+        if not self._mcp_manager.is_enabled():
+            return []
+
+        mcp_tools = mcp_loop.run_until_complete(self._mcp_manager.get_all_tools())
+
+        if mcp_tools:
+            logger.debug("Including %d MCP tools in LLM request", len(mcp_tools))
+        return mcp_tools

@@ -12,10 +12,12 @@ def extract_inline_overrides(
     *,
     role: Optional[str],
     no_context: bool,
+    no_mcp: bool,
     model: Optional[str],
     temperature: Optional[float],
     timeout: int,
     provider: Optional[str],
+    target: Optional[str] = None,
 ) -> Tuple[List[str], Dict]:
     """Extract supported inline flags from free-form tokens.
 
@@ -27,10 +29,12 @@ def extract_inline_overrides(
     # Local copies to mutate
     o_role = role
     o_no_context = no_context
+    o_no_mcp = no_mcp
     o_model = model
     o_temperature = temperature
     o_timeout = timeout
     o_provider = provider
+    o_target = target
     o_verbose_count: int = 0
 
     while i < len(tokens):
@@ -55,6 +59,11 @@ def extract_inline_overrides(
         # --no-context
         if token == "--no-context":
             o_no_context = True
+            i += 1
+            continue
+        # --no-mcp
+        if token == "--no-mcp":
+            o_no_mcp = True
             i += 1
             continue
         # --model/-m <str>
@@ -94,6 +103,14 @@ def extract_inline_overrides(
             o_provider = tokens[i + 1]
             i += 2
             continue
+        # --target/-T <str> (for remote pane targeting)
+        if token in ("--target", "-T"):
+            if i + 1 >= len(tokens):
+                ui.error("--target requires a value (pane number or id)")
+                raise typer.Exit(2)
+            o_target = tokens[i + 1]
+            i += 2
+            continue
 
         # -v or -vv (count-based verbosity)
         # Match exactly -v, -vv, -vvv, etc. (only 'v' characters after the dash)
@@ -122,11 +139,13 @@ def extract_inline_overrides(
     return cleaned, {
         "role": o_role,
         "no_context": o_no_context,
+        "no_mcp": o_no_mcp,
         "model": o_model,
         "temperature": o_temperature,
         "timeout": o_timeout
         if o_timeout is not None
         else None,  # Preserve 0 for validation
         "provider": o_provider,
+        "target": o_target,
         "verbose_count": o_verbose_count,
     }

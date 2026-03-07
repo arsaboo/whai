@@ -29,20 +29,10 @@ def handle_streaming_response(response) -> Generator[Dict[str, Any], None, None]
 
         # Check for text content
         if hasattr(delta, "content") and delta.content:
-            # logger.debug(
-            #     "Streaming text chunk: len=%d",
-            #     len(delta.content),
-            #     extra={"category": "api"},
-            # )
             yield {"type": "text", "content": delta.content}
 
         # Check for tool calls
         if hasattr(delta, "tool_calls") and delta.tool_calls:
-            # logger.debug(
-            #     "Streaming tool_calls chunk: count=%d",
-            #     len(delta.tool_calls),
-            #     extra={"category": "api"},
-            # )
             for tool_call in delta.tool_calls:
                 if not hasattr(tool_call, "function"):
                     continue
@@ -50,16 +40,6 @@ def handle_streaming_response(response) -> Generator[Dict[str, Any], None, None]
                 raw_call_id = getattr(tool_call, "id", "unknown")
                 name = tool_call.function.name
                 arg_chunk = tool_call.function.arguments or ""
-
-                # logger.debug(
-                #     "Processing tool_call chunk: id=%s (type=%s), name=%s (type=%s), args_len=%d",
-                #     raw_call_id,
-                #     type(raw_call_id).__name__,
-                #     name,
-                #     type(name).__name__,
-                #     len(arg_chunk) if arg_chunk else 0,
-                #     extra={"category": "api"},
-                # )
 
                 # Handle None ids by using the last known call_id
                 # OpenAI sends id and name in first chunk, then None for both in subsequent chunks
@@ -97,12 +77,6 @@ def handle_streaming_response(response) -> Generator[Dict[str, Any], None, None]
                 # Accumulate arguments
                 if arg_chunk:
                     partial_tool_calls[call_id]["args"] += arg_chunk
-                    # logger.debug(
-                    #     "Accumulated args for id=%s, total_len=%d",
-                    #     call_id,
-                    #     len(partial_tool_calls[call_id]["args"]),
-                    #     extra={"category": "api"},
-                    # )
 
                 # Try to parse when we have arguments
                 raw_args = partial_tool_calls[call_id]["args"]
@@ -115,9 +89,9 @@ def handle_streaming_response(response) -> Generator[Dict[str, Any], None, None]
                     # Still incomplete, wait for more chunks
                     continue
 
-                # Only emit once we have a non-empty command and a name
+                # Only emit once we have valid parsed arguments and a name
                 stored_name = partial_tool_calls[call_id]["name"]
-                if isinstance(parsed, dict) and parsed.get("command") and stored_name:
+                if isinstance(parsed, dict) and stored_name:
                     yield {
                         "type": "tool_call",
                         "id": call_id,

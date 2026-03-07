@@ -35,7 +35,14 @@ def test_no_tool_call_recovery_retries_with_required_tool_choice():
 
     call_kwargs = []
 
-    def _mock_send_message(messages, tools=None, stream=True, tool_choice=None):
+    def _mock_send_message(
+        messages,
+        tools=None,
+        stream=True,
+        tool_choice=None,
+        mcp_loop=None,
+        **kwargs,
+    ):
         call_kwargs.append({"tool_choice": tool_choice, "stream": stream})
         return responses.pop(0)
 
@@ -87,7 +94,14 @@ def test_missing_command_tool_call_does_not_end_conversation():
         ]),
     ]
 
-    def _mock_send_message(messages, tools=None, stream=True, tool_choice=None):
+    def _mock_send_message(
+        messages,
+        tools=None,
+        stream=True,
+        tool_choice=None,
+        mcp_loop=None,
+        **kwargs,
+    ):
         return responses.pop(0)
 
     mock_provider.send_message.side_effect = _mock_send_message
@@ -122,7 +136,14 @@ def test_no_tool_call_recovery_stops_after_max_retry():
 
     call_kwargs = []
 
-    def _mock_send_message(messages, tools=None, stream=True, tool_choice=None):
+    def _mock_send_message(
+        messages,
+        tools=None,
+        stream=True,
+        tool_choice=None,
+        mcp_loop=None,
+        **kwargs,
+    ):
         call_kwargs.append({"tool_choice": tool_choice})
         return responses.pop(0)
 

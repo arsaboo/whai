@@ -3,7 +3,6 @@
 import asyncio
 import json
 import re
-import sys
 from typing import Any, Dict, List, Optional
 
 from whai import ui
@@ -114,12 +113,14 @@ def run_conversation_loop(
                             ui.error(error_msg)
                         ui.error("\nPlease fix the errors in your mcp.json configuration and try again.")
                         mcp_loop.close()
-                        sys.exit(1)
+                        raise RuntimeError("MCP server initialization failed")
             except Exception as e:
                 logger.exception("Failed to initialize MCP manager: %s", e)
                 mcp_loop.close()
                 mcp_loop = None
                 mcp_manager = None
+                if isinstance(e, RuntimeError):
+                    raise
     else:
         logger.info("MCP disabled for this run")
     
@@ -151,7 +152,7 @@ def run_conversation_loop(
                             ui.error("MCP error:")
                             ui.error(error_msg)
                             ui.error("\nPlease fix the errors in your mcp.json configuration and try again.")
-                            sys.exit(1)
+                            raise RuntimeError("MCP configuration error")
                         raise
                     next_tool_choice = None
                     if isinstance(response, dict):

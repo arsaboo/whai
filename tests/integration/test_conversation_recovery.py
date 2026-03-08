@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from whai.core.executor import run_conversation_loop
 from whai.llm import LLMProvider
 
@@ -159,3 +161,48 @@ def test_no_tool_call_recovery_stops_after_max_retry():
     assert len(call_kwargs) == 2
     assert call_kwargs[0]["tool_choice"] is None
     assert call_kwargs[1]["tool_choice"] == "required"
+
+
+def test_mcp_init_error_raises_runtimeerror_not_systemexit():
+    """MCP init failures should raise RuntimeError (not call sys.exit)."""
+
+    mock_provider = MagicMock(spec=LLMProvider)
+    mock_provider._mcp_manager = None
+    mock_provider.send_message.side_effect = AssertionError(
+        "send_message should not be called when MCP init fails"
+    )
+
+    class FakeMCPManager:
+        def __init__(self):
+            self._initialized = False
+
+        def is_enabled(self):
+            return True
+
+        async def initialize(self):
+            return [("broken-server", "MCP init failed")]
+
+    with patch("whai.mcp.manager.MCPManager", FakeMCPManager):
+        with pytest.raises(RuntimeError, match="MCP server initialization failed"):
+            run_conversation_loop(
+                mock_provider,
+                [{"role": "system", "content": "x"}, {"role": "user", "content": "y"}],
+                timeout=30,
+                mcp_enabled=True,
+            )
+
+
+def test_mcp_config_error_does_not_raise_systemexit():
+    """MCP config errors in send_message path should not terminate via SystemExit."""
+    mock_provider = MagicMock(spec=LLMProvider)
+    mock_provider.send_message.side_effect = RuntimeError("mcp.json is invalid")
+
+    messages = [
+        {"role": "system", "content": "You are helpful."},
+        {"role": "user", "content": "Do something."},
+    ]
+
+    try:
+        run_conversation_loop(mock_provider, messages, timeout=30, mcp_enabled=False)
+    except SystemExit as exc:  # pragma: no cover
+        pytest.fail(f"run_conversation_loop should not call sys.exit, got {exc}")

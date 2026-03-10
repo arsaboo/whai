@@ -33,6 +33,27 @@ EXECUTE_SHELL_TOOL = {
     },
 }
 
+TASK_COMPLETE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "task_complete",
+        "description": (
+            "Call this tool when the task is finished and no more commands need to be run. "
+            "Provide a brief summary of what was accomplished."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "summary": {
+                    "type": "string",
+                    "description": "Brief summary of what was done.",
+                }
+            },
+            "required": [],
+        },
+    },
+}
+
 
 class LLMProvider:
     """
@@ -192,7 +213,7 @@ class LLMProvider:
         """
         # Default to using the execute_shell tool
         if tools is None:
-            tools = [EXECUTE_SHELL_TOOL]
+            tools = [EXECUTE_SHELL_TOOL, TASK_COMPLETE_TOOL]
 
         # Add MCP tools if available
         mcp_tools = self._get_mcp_tools(mcp_loop=mcp_loop)

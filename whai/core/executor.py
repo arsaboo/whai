@@ -447,12 +447,11 @@ def run_conversation_loop(
                                 else True
                             )
 
-                            # Get tool description from cached tool definitions
-                            tool_description = mcp_manager.get_tool_description(
-                                tool_name
-                            )
-
                             if requires_approval:
+                                # Get tool description from cached tool definitions
+                                tool_description = mcp_manager.get_tool_description(
+                                    tool_name
+                                )
                                 # Compute display name only when approval is needed
                                 display_name = (
                                     server_config.name

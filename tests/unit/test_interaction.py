@@ -255,6 +255,31 @@ def test_execute_command_interactive_same_prompt_text_twice():
     assert proc.stdin.getvalue() == "yes\nstill yes\n"
 
 
+def test_execute_command_interactive_bracket_prompt_triggers_once():
+    """Test that bracketed confirmation prompts do not re-trigger on trailing question marks."""
+    proc = FakeProcess(
+        stdout_text="before\nProceed [y/n]? after n\n",
+        stderr_text="",
+        returncode=0,
+    )
+    callback = MagicMock(return_value="n\n")
+
+    with (
+        patch("whai.interaction.execution.is_windows", return_value=False),
+        patch("subprocess.Popen", return_value=proc),
+        patch.dict("os.environ", {"SHELL": "/bin/bash"}),
+    ):
+        stdout, stderr, code = interaction.execute_command(
+            "some_command", on_input_needed=callback
+        )
+
+    assert stdout == "before\nProceed [y/n]? after n\n"
+    assert stderr == ""
+    assert code == 0
+    callback.assert_called_once_with("before\nProceed [y/n]?")
+    assert proc.stdin.getvalue() == "n\n"
+
+
 def test_execute_command_interactive_cancel_raises_error():
     """Test that cancelling interactive input stops the command."""
     proc = FakeProcess(stdout_text="Continue?", stderr_text="", returncode=1)

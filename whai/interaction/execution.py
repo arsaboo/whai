@@ -19,9 +19,7 @@ logger = get_logger(__name__)
 INPUT_PROMPT_PATTERNS = [
     re.compile(p, re.IGNORECASE)
     for p in [
-        r"\[y/n\]",
-        r"\[Y/n\]",
-        r"\[y/N\]",
+        r"\[[Yy]/[Nn]\]\s*\?",
         r"\(y/n\)",
         r"[Pp]assword\s*:",
         r"[Pp]assphrase\s*:",

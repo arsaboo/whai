@@ -16,6 +16,7 @@ from whai.utils import detect_shell, is_windows
 logger = get_logger(__name__)
 
 # Patterns that indicate the command is waiting for user input.
+# Only include patterns specific enough to avoid false positives on normal output.
 INPUT_PROMPT_PATTERNS = [
     re.compile(p, re.IGNORECASE)
     for p in [
@@ -23,16 +24,22 @@ INPUT_PROMPT_PATTERNS = [
         r"\(y/n\)",
         r"[Pp]assword\s*:",
         r"[Pp]assphrase\s*:",
-        r"Continue\?",
-        r"Proceed\?",
-        r"Are you sure\?",
+        r"Continue\s*\?",
+        r"Proceed\s*\?",
+        r"Are you sure\s*\?",
         r"Press Enter",
         r"Press any key",
         r"Do you want to continue",
-        r"(?:^|[\r\n])[^\r\n]{1,80}\?",
+        r"Enter .{1,30}:",
+        r"[Uu]sername\s*:",
+        r"[Ll]ogin\s*:",
     ]
 ]
 PROMPT_SEARCH_WINDOW = 200
+# If the process is alive but no output has been received for this many seconds,
+# assume it is waiting for input (handles prompts written to /dev/tty or other
+# undetectable destinations).
+INPUT_IDLE_TIMEOUT = 3.0
 
 
 def _stream_chars(
@@ -151,13 +158,16 @@ def execute_command(
             thread.start()
 
         start_time = time.monotonic()
+        last_output_time = time.monotonic()
         last_handled_prompt_end = -1
+        idle_prompted = False
 
         try:
             while True:
+                now = time.monotonic()
                 if (
                     timeout_for_wait is not None
-                    and (time.monotonic() - start_time) > timeout_for_wait
+                    and (now - start_time) > timeout_for_wait
                 ):
                     proc.kill()
                     proc.wait()
@@ -175,7 +185,36 @@ def execute_command(
                         and not any(thread.is_alive() for thread in threads)
                     ):
                         break
+
+                    # Idle-timeout detection: if process is alive but no output
+                    # for INPUT_IDLE_TIMEOUT seconds, it may be waiting for input
+                    # (e.g. read -p writes to /dev/tty, not captured pipes).
+                    if (
+                        not idle_prompted
+                        and proc.poll() is None
+                        and (time.monotonic() - last_output_time)
+                        >= INPUT_IDLE_TIMEOUT
+                    ):
+                        idle_prompted = True
+                        output_so_far = "".join(combined_buf)
+                        user_input = on_input_needed(output_so_far)
+                        if user_input is None:
+                            proc.kill()
+                            proc.wait()
+                            raise RuntimeError("Command input was cancelled.")
+                        try:
+                            proc.stdin.write(user_input)
+                            proc.stdin.flush()
+                        except (BrokenPipeError, OSError):
+                            pass
+                        last_output_time = time.monotonic()
+                        idle_prompted = False
+
                     continue
+
+                # Got output — reset idle timer
+                last_output_time = time.monotonic()
+                idle_prompted = False
 
                 if stream_name == "stdout":
                     stdout_buf.append(chunk)

@@ -211,7 +211,9 @@ def test_execute_command_interactive_prompt_on_stderr():
 
 def test_execute_command_interactive_sequential_prompts():
     """Test that sequential prompts each trigger exactly once."""
-    proc = FakeProcess(stdout_text="First? Second? done\n", stderr_text="", returncode=0)
+    proc = FakeProcess(
+        stdout_text="Continue? Proceed? done\n", stderr_text="", returncode=0
+    )
     callback = MagicMock(side_effect=["alpha\n", "beta\n"])
 
     with (
@@ -223,18 +225,20 @@ def test_execute_command_interactive_sequential_prompts():
             "some_command", on_input_needed=callback
         )
 
-    assert stdout == "First? Second? done\n"
+    assert stdout == "Continue? Proceed? done\n"
     assert stderr == ""
     assert code == 0
     assert callback.call_count == 2
-    assert callback.call_args_list[0].args == ("First?",)
-    assert callback.call_args_list[1].args == ("First? Second?",)
+    assert callback.call_args_list[0].args == ("Continue?",)
+    assert callback.call_args_list[1].args == ("Continue? Proceed?",)
     assert proc.stdin.getvalue() == "alpha\nbeta\n"
 
 
 def test_execute_command_interactive_same_prompt_text_twice():
     """Test that the same prompt text can appear twice without duplicate firing."""
-    proc = FakeProcess(stdout_text="Continue? Continue? done\n", stderr_text="", returncode=0)
+    proc = FakeProcess(
+        stdout_text="Continue? Continue? done\n", stderr_text="", returncode=0
+    )
     callback = MagicMock(side_effect=["yes\n", "still yes\n"])
 
     with (

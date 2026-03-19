@@ -4,8 +4,10 @@ import asyncio
 import json
 from typing import Any, Dict, List, Optional
 
+from rich.text import Text
+
 from whai import ui
-from whai.constants import TOOL_OUTPUT_MAX_TOKENS
+from whai.constants import TOOL_OUTPUT_MAX_TOKENS, UI_TEXT_STYLE_PROMPT
 from whai.core.session_logger import SessionLogger
 from whai.interaction import approval_loop, approve_tool, execute_command
 from whai.llm import LLMProvider
@@ -344,10 +346,48 @@ def run_conversation_loop(
                                     },
                                 )
                             else:
-                                with ui.spinner("Executing command..."):
+                                status = ui.console.status(
+                                    "Executing command...", spinner="dots"
+                                )
+                                status.start()
+                                last_prompt_output = ""
+
+                                def on_input_needed(
+                                    output_so_far: str,
+                                ) -> Optional[str]:
+                                    nonlocal last_prompt_output
+                                    status.stop()
+                                    fresh_output = output_so_far
+                                    if output_so_far.startswith(last_prompt_output):
+                                        fresh_output = output_so_far[
+                                            len(last_prompt_output) :
+                                        ]
+                                    if fresh_output:
+                                        ui.print_output(fresh_output, "", -1)
+                                    last_prompt_output = output_so_far
+                                    try:
+                                        ui.console.print(
+                                            Text(
+                                                "Command is waiting for input: ",
+                                                style=UI_TEXT_STYLE_PROMPT,
+                                            ),
+                                            end="",
+                                        )
+                                        user_input = input()
+                                        return user_input + "\n"
+                                    except (EOFError, KeyboardInterrupt):
+                                        return None
+                                    finally:
+                                        status.start()
+
+                                try:
                                     stdout, stderr, returncode = execute_command(
-                                        approved_command, timeout=timeout
+                                        approved_command,
+                                        timeout=timeout,
+                                        on_input_needed=on_input_needed,
                                     )
+                                finally:
+                                    status.stop()
                                 loop_perf.log_section(
                                     "Command execution",
                                     extra_info={

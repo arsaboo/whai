@@ -1,5 +1,6 @@
 """Tests for interaction module."""
 
+import io
 import subprocess
 from unittest.mock import MagicMock, patch
 
@@ -8,139 +9,218 @@ import pytest
 from whai import interaction
 
 
+class FakeProcess:
+    def __init__(
+        self,
+        *,
+        stdout_text="",
+        stderr_text="",
+        returncode=0,
+        communicate_result=None,
+        communicate_side_effect=None,
+    ):
+        self.stdout = io.StringIO(stdout_text)
+        self.stderr = io.StringIO(stderr_text)
+        self.stdin = io.StringIO()
+        self.returncode = returncode
+        self._communicate_result = communicate_result
+        self._communicate_side_effect = communicate_side_effect
+        self.killed = False
+        self.wait_calls = []
+
+    def communicate(self, timeout=None):
+        if self._communicate_side_effect is not None:
+            raise self._communicate_side_effect
+        if self._communicate_result is not None:
+            return self._communicate_result
+        return (self.stdout.getvalue(), self.stderr.getvalue())
+
+    def kill(self):
+        self.killed = True
+
+    def wait(self, timeout=None):
+        self.wait_calls.append(timeout)
+        return self.returncode
+
+    def poll(self):
+        return self.returncode
+
+
 def test_execute_command_unix_success():
     """Test successful command execution on Unix."""
+    proc = FakeProcess(
+        communicate_result=("file1.txt\nfile2.txt\n", ""),
+        returncode=0,
+    )
+
     with (
         patch("whai.interaction.execution.is_windows", return_value=False),
-        patch("subprocess.run") as mock_run,
+        patch("subprocess.Popen", return_value=proc) as mock_popen,
         patch.dict("os.environ", {"SHELL": "/bin/bash"}),
     ):
-        mock_result = MagicMock()
-        mock_result.stdout = "file1.txt\nfile2.txt\n"
-        mock_result.stderr = ""
-        mock_result.returncode = 0
-        mock_run.return_value = mock_result
-
         stdout, stderr, code = interaction.execute_command("ls")
 
-        assert "file1.txt" in stdout
-        assert "file2.txt" in stdout
-        assert stderr == ""
-        assert code == 0
-        mock_run.assert_called_once()
+    assert "file1.txt" in stdout
+    assert "file2.txt" in stdout
+    assert stderr == ""
+    assert code == 0
+    assert mock_popen.call_args[0][0] == ["/bin/bash", "-c", "ls"]
 
 
 def test_execute_command_windows_powershell():
     """Test command execution on Windows with PowerShell."""
+    proc = FakeProcess(communicate_result=("test output\n", ""), returncode=0)
+
     with (
         patch("whai.interaction.execution.is_windows", return_value=True),
         patch("whai.interaction.execution.detect_shell", return_value="pwsh"),
-        patch("subprocess.run") as mock_run,
+        patch("whai.interaction.execution.shutil.which", return_value="pwsh.exe"),
+        patch("subprocess.Popen", return_value=proc) as mock_popen,
     ):
-        mock_result = MagicMock()
-        mock_result.stdout = "test output\n"
-        mock_result.stderr = ""
-        mock_result.returncode = 0
-        mock_run.return_value = mock_result
-
         stdout, stderr, code = interaction.execute_command("Get-ChildItem")
 
-        assert "test output" in stdout
-        assert code == 0
-        # Verify PowerShell was used (either pwsh or powershell)
-        call_args = mock_run.call_args[0][0]
-        first_arg_lower = call_args[0].lower()
-        assert "pwsh" in first_arg_lower or "powershell" in first_arg_lower
+    assert "test output" in stdout
+    assert stderr == ""
+    assert code == 0
+    assert mock_popen.call_args[0][0] == ["pwsh.exe", "-Command", "Get-ChildItem"]
 
 
 def test_execute_command_windows_cmd():
     """Test command execution on Windows with cmd.exe."""
+    proc = FakeProcess(communicate_result=("test output\n", ""), returncode=0)
+
     with (
         patch("whai.interaction.execution.is_windows", return_value=True),
-        patch("whai.interaction.execution.detect_shell", return_value="bash"),  # Not pwsh
-        patch("subprocess.run") as mock_run,
+        patch("whai.interaction.execution.detect_shell", return_value="bash"),
+        patch("subprocess.Popen", return_value=proc) as mock_popen,
     ):
-        mock_result = MagicMock()
-        mock_result.stdout = "test output\n"
-        mock_result.stderr = ""
-        mock_result.returncode = 0
-        mock_run.return_value = mock_result
-
         stdout, stderr, code = interaction.execute_command("dir")
 
-        assert "test output" in stdout
-        assert code == 0
-        # Verify cmd.exe was used
-        call_args = mock_run.call_args[0][0]
-        assert "cmd.exe" in call_args
+    assert "test output" in stdout
+    assert stderr == ""
+    assert code == 0
+    assert mock_popen.call_args[0][0] == ["cmd.exe", "/c", "dir"]
 
 
 def test_execute_command_with_stderr():
     """Test command execution with stderr output."""
+    proc = FakeProcess(
+        communicate_result=("output\n", "error message\n"),
+        returncode=1,
+    )
+
     with (
         patch("whai.interaction.execution.is_windows", return_value=False),
-        patch("subprocess.run") as mock_run,
+        patch("subprocess.Popen", return_value=proc),
         patch.dict("os.environ", {"SHELL": "/bin/bash"}),
     ):
-        mock_result = MagicMock()
-        mock_result.stdout = "output\n"
-        mock_result.stderr = "error message\n"
-        mock_result.returncode = 1
-        mock_run.return_value = mock_result
-
         stdout, stderr, code = interaction.execute_command("failing_command")
 
-        assert stdout == "output\n"
-        assert "error message" in stderr
-        assert code == 1
+    assert stdout == "output\n"
+    assert "error message" in stderr
+    assert code == 1
 
 
 def test_execute_command_timeout():
     """Test that execute_command raises error on timeout."""
+    proc = FakeProcess(
+        communicate_side_effect=subprocess.TimeoutExpired("cmd", 30),
+        returncode=1,
+    )
+
     with (
         patch("whai.interaction.execution.is_windows", return_value=False),
-        patch("subprocess.run") as mock_run,
+        patch("subprocess.Popen", return_value=proc),
         patch.dict("os.environ", {"SHELL": "/bin/bash"}),
     ):
-        mock_run.side_effect = subprocess.TimeoutExpired("cmd", 30)
-
         with pytest.raises(RuntimeError, match="timed out"):
             interaction.execute_command("sleep 100", timeout=30)
 
+    assert proc.killed is True
+
 
 def test_execute_command_infinite_timeout():
-    """Test that execute_command with timeout=0 passes None to subprocess (infinite timeout)."""
+    """Test that execute_command with timeout=0 passes None to communicate."""
+    proc = FakeProcess(communicate_result=("output\n", ""), returncode=0)
+
     with (
         patch("whai.interaction.execution.is_windows", return_value=False),
-        patch("subprocess.run") as mock_run,
+        patch("subprocess.Popen", return_value=proc),
         patch.dict("os.environ", {"SHELL": "/bin/bash"}),
     ):
-        mock_result = MagicMock()
-        mock_result.stdout = "output\n"
-        mock_result.stderr = ""
-        mock_result.returncode = 0
-        mock_run.return_value = mock_result
-
         stdout, stderr, code = interaction.execute_command("echo test", timeout=0)
 
-        assert stdout == "output\n"
-        assert code == 0
-        # Verify that None was passed as timeout (infinite timeout)
-        call_kwargs = mock_run.call_args[1]
-        assert call_kwargs["timeout"] is None
+    assert stdout == "output\n"
+    assert code == 0
 
 
 def test_execute_command_other_error():
     """Test that execute_command handles other errors."""
     with (
         patch("whai.interaction.execution.is_windows", return_value=False),
-        patch("subprocess.run") as mock_run,
+        patch("subprocess.Popen", side_effect=Exception("Something went wrong")),
         patch.dict("os.environ", {"SHELL": "/bin/bash"}),
     ):
-        mock_run.side_effect = Exception("Something went wrong")
-
         with pytest.raises(RuntimeError, match="Error executing command"):
             interaction.execute_command("some_command")
+
+
+def test_execute_command_interactive_prompt_on_stdout():
+    """Test that prompt detection can supply input on stdout prompts."""
+    proc = FakeProcess(stdout_text="Continue?", stderr_text="", returncode=0)
+    callback = MagicMock(return_value="y\n")
+
+    with (
+        patch("whai.interaction.execution.is_windows", return_value=False),
+        patch("subprocess.Popen", return_value=proc),
+        patch.dict("os.environ", {"SHELL": "/bin/bash"}),
+    ):
+        stdout, stderr, code = interaction.execute_command(
+            "some_command", on_input_needed=callback
+        )
+
+    assert stdout == "Continue?"
+    assert stderr == ""
+    assert code == 0
+    callback.assert_called_once_with("Continue?")
+    assert proc.stdin.getvalue() == "y\n"
+
+
+def test_execute_command_interactive_prompt_on_stderr():
+    """Test that prompt detection also works for stderr prompts without newlines."""
+    proc = FakeProcess(stdout_text="", stderr_text="Password:", returncode=0)
+    callback = MagicMock(return_value="secret\n")
+
+    with (
+        patch("whai.interaction.execution.is_windows", return_value=False),
+        patch("subprocess.Popen", return_value=proc),
+        patch.dict("os.environ", {"SHELL": "/bin/bash"}),
+    ):
+        stdout, stderr, code = interaction.execute_command(
+            "some_command", on_input_needed=callback
+        )
+
+    assert stdout == ""
+    assert stderr == "Password:"
+    assert code == 0
+    callback.assert_called_once_with("Password:")
+    assert proc.stdin.getvalue() == "secret\n"
+
+
+def test_execute_command_interactive_cancel_raises_error():
+    """Test that cancelling interactive input stops the command."""
+    proc = FakeProcess(stdout_text="Continue?", stderr_text="", returncode=1)
+    callback = MagicMock(return_value=None)
+
+    with (
+        patch("whai.interaction.execution.is_windows", return_value=False),
+        patch("subprocess.Popen", return_value=proc),
+        patch.dict("os.environ", {"SHELL": "/bin/bash"}),
+    ):
+        with pytest.raises(RuntimeError, match="input was cancelled"):
+            interaction.execute_command("some_command", on_input_needed=callback)
+
+    assert proc.killed is True
 
 
 def test_approval_loop_approve():
@@ -190,5 +270,3 @@ def test_approval_loop_eof():
     with patch("builtins.input", side_effect=EOFError()):
         result = interaction.approval_loop("ls")
         assert result is None
-
-

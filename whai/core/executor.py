@@ -438,7 +438,12 @@ def run_conversation_loop(
 
                                 # Display the output (pretty formatted)
                                 ui.console.print()
-                                ui.print_output(stdout, stderr, returncode)
+                                if last_prompt_output:
+                                    # Output was already shown during interactive prompts.
+                                    # Just show completion status to avoid duplicate display.
+                                    ui.print_output("", "", returncode)
+                                else:
+                                    ui.print_output(stdout, stderr, returncode)
                                 ui.console.print()
 
                         except Exception as e:

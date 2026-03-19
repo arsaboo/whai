@@ -70,7 +70,7 @@ def _dispatch_to_subcommand(query: List[str], ctx: typer.Context) -> bool:
     
     Returns True if a subcommand was dispatched, False otherwise.
     """
-    if not query or len(query) == 0:
+    if not query:
         return False
     
     subcommand_name = query[0]
@@ -97,6 +97,15 @@ def _dispatch_to_subcommand(query: List[str], ctx: typer.Context) -> bool:
     return False
 
 
+def _verbose_to_log_level(count: int) -> Optional[str]:
+    """Map verbose count to log level string."""
+    if count == 0:
+        return None
+    if count == 1:
+        return "INFO"
+    return "DEBUG"
+
+
 def _reconstruct_invocation_command() -> Optional[str]:
     """Reconstruct the full whai command invocation for context exclusion."""
     if len(sys.argv) <= 1:
@@ -108,12 +117,7 @@ def _reconstruct_invocation_command() -> Optional[str]:
     
     # Normalize the command name: if it ends with "whai" or contains "whai",
     # use just "whai" to match what typically appears in history
-    if argv0.endswith("whai") or argv0.endswith(os.sep + "whai"):
-        # Extract just "whai" from path
-        command_name = "whai"
-    elif "whai" in argv0.lower():
-        # Fallback: if "whai" appears anywhere, try to extract it
-        # This handles edge cases like aliases
+    if "whai" in argv0.lower():
         command_name = "whai"
     else:
         # Use the basename if it's not obviously whai
@@ -328,14 +332,7 @@ def shell_command(
                 break
     
     # Configure logging based on verbose count
-    if total_verbose_count == 0:
-        effective_log_level = None  # Use default
-    elif total_verbose_count == 1:
-        effective_log_level = "INFO"
-    else:  # 2 or more
-        effective_log_level = "DEBUG"
-    
-    configure_logging(effective_log_level)
+    configure_logging(_verbose_to_log_level(total_verbose_count))
     
     logger.info(
         "Shell command invoked: shell=%s log_path=%s verbose=%s",
@@ -504,6 +501,7 @@ def main(
     # Workaround for Click/Typer parsing with variadic arguments:
     # If users place options after the free-form query, those tokens land in `query`.
     # Extract supported inline options from `query` and apply them.
+    target_pane: Optional[str] = target
     if query:
         query, overrides = extract_inline_overrides(
             query,
@@ -526,8 +524,6 @@ def main(
         target_pane = overrides["target"]
 
     # If no explicit target from CLI or query, fall back to environment variable
-    if "target_pane" not in locals():
-        target_pane: Optional[str] = None
     if target_pane is None:
         env_target = (os.environ.get(ENV_WHAI_TARGET) or "").strip()
         if env_target:
@@ -557,19 +553,11 @@ def main(
         raise typer.Exit(2)
 
     # Determine effective log level from verbose count or inline overrides
-    # Map count to log level: 0 = default (CRITICAL), 1 = INFO, 2+ = DEBUG
     inline_verbose_count = overrides.get("verbose_count", 0)
     total_verbose_count = verbose + inline_verbose_count
-    
-    if total_verbose_count == 0:
-        effective_log_level = None  # Use default
-    elif total_verbose_count == 1:
-        effective_log_level = "INFO"
-    else:  # 2 or more
-        effective_log_level = "DEBUG"
 
     # Configure logging
-    configure_logging(effective_log_level)
+    configure_logging(_verbose_to_log_level(total_verbose_count))
 
     final_detected_flags: List[str] = []
     if total_verbose_count >= 2:
@@ -580,10 +568,6 @@ def main(
         final_detected_flags.append("--no-context")
     if no_mcp:
         final_detected_flags.append("--no-mcp")
-    if interactive_config:
-        final_detected_flags.append("--interactive-config")
-    if version_flag:
-        final_detected_flags.append("--version")
     if role is not None:
         final_detected_flags.append("--role")
     if model is not None:
@@ -659,14 +643,14 @@ def main(
         mcp_enabled = not no_mcp and config.mcp.enabled
 
         # 2. Get context (tmux or history)
-        command_to_exclude = _reconstruct_invocation_command()
-        if command_to_exclude:
-            logger.debug("Will exclude command from context: %s", command_to_exclude)
+        command_string = _reconstruct_invocation_command()
+        if command_string:
+            logger.debug("Will exclude command from context: %s", command_string)
         else:
             logger.debug("No command arguments to exclude from context")
         
         context_str, is_deep_context = _setup_context_capture(
-            no_context, command_to_exclude, startup_perf, target_pane=target_pane
+            no_context, command_string, startup_perf, target_pane=target_pane
         )
 
         # 4. Initialize LLM provider
@@ -699,10 +683,7 @@ def main(
         )
         startup_perf.log_complete()
 
-        # 7. Reconstruct command string for logging
-        command_string = _reconstruct_invocation_command()
-
-        # 8. Main conversation loop
+        # 7. Main conversation loop
         run_conversation_loop(llm_provider, messages, timeout, command_string=command_string, target_pane=target_pane, mcp_enabled=mcp_enabled)
 
     except typer.Exit:

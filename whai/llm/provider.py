@@ -189,6 +189,12 @@ class LLMProvider:
                 # LiteLLM defaults to empty string if not set
                 os.environ["LM_STUDIO_API_KEY"] = ""
 
+        elif self.configured_provider == "openai_api":
+            # Generic OpenAI-compatible endpoint (llama.cpp, vLLM, llama-swap, etc.).
+            # api_base and api_key are injected directly into the completion() call;
+            # no global env vars are set to avoid polluting the real OpenAI config.
+            pass
+
     def send_message(
         self,
         messages: List[Dict[str, str]],
@@ -243,7 +249,7 @@ class LLMProvider:
                 completion_kwargs["api_base"] = self.api_base
 
             # Add API key if configured (for LM Studio, Ollama - passed directly to completion)
-            if self.api_key and self.configured_provider in ("lm_studio", "ollama"):
+            if self.api_key and self.configured_provider in ("lm_studio", "ollama", "openai_api"):
                 completion_kwargs["api_key"] = self.api_key
 
             # Only include temperature if explicitly set AND model supports it

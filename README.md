@@ -293,6 +293,25 @@ To use a local model with LM Studio:
 
 </details>
 
+<details>
+<summary><strong>Using OpenAI-Compatible Local Endpoints</strong></summary>
+
+Use `openai_api` for llama.cpp, llama-swap, vLLM, Tabby, and any other server that exposes an OpenAI-compatible `/v1` API.
+
+1. Start your local server and confirm its OpenAI API base URL.
+2. Configure whai:
+   ```zsh
+   whai --interactive-config
+   ```
+   - Select `openai_api` as the provider
+   - Leave the API key blank if the server does not require one
+   - Enter the API base URL for your server
+   - Enter the model name without provider prefix (for example: `llama3`, `qwen2.5`, or your server’s exposed model id)
+
+   Note: whai stores model names without provider prefixes and automatically adds the LiteLLM routing prefix at runtime.
+
+</details>
+
 ### 2. Start using whai
 
 > Getting Help: For a complete list of command-line options and flags, run `whai --help`.
@@ -324,6 +343,7 @@ That's it! `whai` will:
 - **Azure OpenAI** - Azure-hosted OpenAI models
 - **Ollama** - Running Ollama instance
 - **LM Studio** - Local models via LM Studio
+- **OpenAI-compatible local endpoints** - llama.cpp, llama-swap, vLLM, Tabby, and similar servers
 
 Each provider must be configured in your `~/.config/whai/config.toml` file. You can configure multiple providers and switch between them using roles or the `--provider` flag.
 

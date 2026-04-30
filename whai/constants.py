@@ -20,6 +20,7 @@ DEFAULT_MODEL_GEMINI = "gemini-2.5-flash"
 DEFAULT_MODEL_AZURE_OPENAI = "gpt-4"
 DEFAULT_MODEL_OLLAMA = "mistral"
 DEFAULT_MODEL_LM_STUDIO = "llama-3-8b-instruct"
+DEFAULT_MODEL_OPENAI_API = "llama3"
 DEFAULT_MODEL_MISTRAL = "mistral-small-latest"
 
 # Model prefixes for special handling
@@ -29,6 +30,7 @@ GPT5_MODEL_PREFIX = "gpt-5"
 DEFAULT_AZURE_API_VERSION = "2023-05-15"
 DEFAULT_OLLAMA_API_BASE = "http://localhost:11434"
 DEFAULT_LM_STUDIO_API_BASE = "http://localhost:1234/v1"
+DEFAULT_OPENAI_API_BASE = "http://localhost:8080/v1"
 
 # Provider configuration defaults
 PROVIDER_DEFAULTS = {
@@ -63,6 +65,13 @@ PROVIDER_DEFAULTS = {
         "defaults": {
             "api_base": DEFAULT_LM_STUDIO_API_BASE,
             "default_model": DEFAULT_MODEL_LM_STUDIO,
+        },
+    },
+    "openai_api": {
+        "fields": ["api_key", "api_base", "default_model"],
+        "defaults": {
+            "api_base": DEFAULT_OPENAI_API_BASE,
+            "default_model": DEFAULT_MODEL_OPENAI_API,
         },
     },
     "mistral": {

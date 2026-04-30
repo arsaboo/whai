@@ -207,7 +207,7 @@ def _get_provider_config(
                     actual_default = existing_value
 
             # Check if API key is optional for this provider
-            is_optional = provider in ("lm_studio", "ollama")
+            is_optional = provider in ("lm_studio", "ollama", "openai_api")
             prompt_text = f"{field}"
             if is_optional:
                 prompt_text += " (optional, leave empty for no API key)"
@@ -240,8 +240,8 @@ def _get_provider_config(
                         value = actual_default
                         break
                     # Check if API key is optional for this provider
-                    # LM Studio and Ollama allow optional API keys
-                    if provider in ("lm_studio", "ollama"):
+                    # LM Studio, Ollama, and OpenAI-compatible local endpoints allow optional API keys
+                    if provider in ("lm_studio", "ollama", "openai_api"):
                         # Allow empty for optional API keys
                         value = ""
                         break

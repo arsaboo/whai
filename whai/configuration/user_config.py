@@ -5,7 +5,7 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple, Type
 
 # Use tomllib for Python 3.11+, tomli for older versions
 if sys.version_info >= (3, 11):
@@ -112,7 +112,9 @@ class ProviderConfig:
                     f"{self.provider_name} provider 'api_base' must be a valid HTTP/HTTPS URL, got: {self.api_base}"
                 )
 
-    def _validate_non_empty_field(self, field_name: str, field_value: Optional[str]) -> None:
+    def _validate_non_empty_field(
+        self, field_name: str, field_value: Optional[str]
+    ) -> None:
         """Validate that a required field is non-empty."""
         if not field_value or not field_value.strip():
             raise InvalidProviderConfigError(
@@ -413,7 +415,9 @@ class MistralConfig(ProviderConfig):
         """Strip mistral/ prefix from model name if present."""
         super().__post_init__()
         if self.default_model:
-            self.default_model = self._strip_provider_prefix(self.default_model, "mistral/")
+            self.default_model = self._strip_provider_prefix(
+                self.default_model, "mistral/"
+            )
 
     def _validate_required_fields(self) -> None:
         """Validate Mistral-specific requirements."""
@@ -454,7 +458,9 @@ class GeminiConfig(ProviderConfig):
         """Strip gemini/ prefix from model name if present."""
         super().__post_init__()
         if self.default_model:
-            self.default_model = self._strip_provider_prefix(self.default_model, "gemini/")
+            self.default_model = self._strip_provider_prefix(
+                self.default_model, "gemini/"
+            )
 
     def _validate_required_fields(self) -> None:
         """Validate Gemini-specific requirements."""
@@ -522,8 +528,12 @@ class OllamaConfig(ProviderConfig):
         """Strip ollama/ or ollama_chat/ prefix from model name if present."""
         super().__post_init__()
         if self.default_model:
-            self.default_model = self._strip_provider_prefix(self.default_model, "ollama/")
-            self.default_model = self._strip_provider_prefix(self.default_model, "ollama_chat/")
+            self.default_model = self._strip_provider_prefix(
+                self.default_model, "ollama/"
+            )
+            self.default_model = self._strip_provider_prefix(
+                self.default_model, "ollama_chat/"
+            )
 
     def _validate_required_fields(self) -> None:
         """Validate Ollama-specific requirements."""
@@ -553,13 +563,13 @@ class OllamaConfig(ProviderConfig):
     def _get_available_models(self) -> List[str]:
         """
         Get list of available model names from Ollama's /api/tags endpoint.
-        
+
         Returns:
             List of model names (empty list if query fails or no models available)
         """
         if not self.api_base:
             return []
-        
+
         try:
             import json
             import urllib.error
@@ -594,76 +604,103 @@ class OllamaConfig(ProviderConfig):
 
 
 @dataclass
-class LMStudioConfig(ProviderConfig):
+class OpenAICompatibleConfig(ProviderConfig):
     """
-    Configuration for LM Studio provider.
-    
-    LM Studio uses the official 'lm_studio/' prefix in LiteLLM with
-    LM_STUDIO_API_BASE and optional LM_STUDIO_API_KEY environment variables.
+    Base configuration for OpenAI-compatible endpoints.
+
+    Covers any server that speaks the OpenAI REST API: llama.cpp, llama-swap,
+    vLLM, LM Studio, and similar. Subclasses set ``_litellm_prefix`` to
+    choose the LiteLLM routing prefix (e.g. ``"lm_studio"`` or ``"openai"``).
     """
 
-    provider_name: str = "lm_studio"
+    provider_name: str = "openai_compatible"
+
+    # Class-level constant — not an instance field, not included in __init__.
+    # Subclasses override this at class body level.
+    _litellm_prefix: ClassVar[str] = "openai"
 
     def __post_init__(self) -> None:
-        """Strip lm_studio/ or openai/ prefix from model name if present."""
+        """Strip the provider prefix from model name if present."""
         super().__post_init__()
         if self.default_model:
-            # Strip lm_studio/ prefix if present
-            self.default_model = self._strip_provider_prefix(self.default_model, "lm_studio/")
-            # Also strip openai/ prefix if present (for backward compatibility)
-            self.default_model = self._strip_provider_prefix(self.default_model, "openai/")
+            self.default_model = self._strip_provider_prefix(
+                self.default_model, f"{self._litellm_prefix}/"
+            )
 
     def _validate_required_fields(self) -> None:
-        """Validate LM Studio-specific requirements."""
         self._validate_non_empty_field("api_base", self.api_base)
         self._validate_non_empty_field("default_model", self.default_model)
 
     def get_summary_fields(self) -> Dict[str, str]:
-        """Get LM Studio-specific fields for summary."""
-        fields = {}
-        fields["model"] = self.default_model or "MISSING"
-        fields["api_base"] = self.api_base or "MISSING"
-        # API key is optional for LM Studio, only show if present
+        fields: Dict[str, str] = {
+            "model": self.default_model or "MISSING",
+            "api_base": self.api_base or "MISSING",
+        }
         if self.api_key:
             fields["key"] = self._get_masked_key(self.api_key)
         return fields
 
     def _get_litellm_model_name(self) -> str:
-        """Get model name with lm_studio/ prefix (official LiteLLM approach)."""
-        return f"lm_studio/{self.default_model or 'default'}"
+        return f"{self._litellm_prefix}/{self.default_model or 'default'}"
 
     def sanitize_model_name(self, model: str) -> str:
+        base_model = self._strip_provider_prefix(model, f"{self._litellm_prefix}/")
+        return f"{self._litellm_prefix}/{base_model}"
+
+    def _get_available_models(self) -> List[str]:
         """
-        Transform a model name to the format required by LiteLLM for LM Studio.
-
-        LM Studio uses the official 'lm_studio/' prefix in LiteLLM.
-        This method handles model names that may come with prefixes and ensures
-        they're formatted correctly as 'lm_studio/{model}'.
-
-        Args:
-            model: The model name to transform (may include 'lm_studio/' or 'openai/' prefix).
+        Fetch model IDs from the OpenAI-compatible ``/models`` endpoint.
 
         Returns:
-            Model name formatted as 'lm_studio/{base_model}' for LiteLLM.
+            List of model ID strings; empty list if the query fails.
         """
-        # Strip 'lm_studio/' prefix if present
-        base_model = self._strip_provider_prefix(model, "lm_studio/")
-        # Also strip 'openai/' prefix if present (for backward compatibility with old configs)
-        base_model = self._strip_provider_prefix(base_model, "openai/")
-        # Format as 'lm_studio/{model}' for LiteLLM (official approach)
-        return f"lm_studio/{base_model}"
+        if not self.api_base:
+            return []
+        try:
+            import json
+            import urllib.request
+
+            models_url = f"{self.api_base.rstrip('/')}/models"
+            req = urllib.request.Request(
+                models_url, headers={"Content-Type": "application/json"}, method="GET"
+            )
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode())
+                return [m.get("id") for m in data.get("data", [])]
+        except Exception:
+            return []
+
+    def _validate_model(self) -> Tuple[bool, Optional[str]]:
+        """
+        Validate the model against the live ``/models`` endpoint.
+
+        Local models are not in LiteLLM's registry, so we check the server
+        directly. Returns ``(True, None)`` when the endpoint is unreachable so
+        the wizard never blocks a valid configuration due to a network hiccup.
+        """
+        if not self.default_model or not self.api_base:
+            return True, None
+
+        available = self._get_available_models()
+        if self.default_model in available:
+            return True, None
+
+        if available:
+            preview = ", ".join(available[:5]) + ("..." if len(available) > 5 else "")
+            issue = (
+                f"Model '{self.default_model}' not found at endpoint. "
+                f"Available models: {preview}"
+            )
+        else:
+            issue = "No models found at the configured endpoint"
+        return False, issue
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "LMStudioConfig":
-        """Create LMStudioConfig from dictionary, stripping lm_studio/ or openai/ prefix if present."""
+    def from_dict(cls, data: Dict[str, Any]) -> "OpenAICompatibleConfig":
         default_model = data.get("default_model")
-        if default_model:
-            # Strip lm_studio/ prefix if present
-            if default_model.startswith("lm_studio/"):
-                default_model = default_model[len("lm_studio/") :]
-            # Also strip openai/ prefix if present (for backward compatibility)
-            elif default_model.startswith("openai/"):
-                default_model = default_model[len("openai/") :]
+        prefix = f"{cls._litellm_prefix}/"
+        if default_model and default_model.startswith(prefix):
+            default_model = default_model[len(prefix) :]
         return cls(
             api_key=data.get("api_key"),
             api_base=data.get("api_base"),
@@ -671,67 +708,63 @@ class LMStudioConfig(ProviderConfig):
             default_model=default_model,
         )
 
-    def _get_available_models(self) -> List[str]:
-        """
-        Get list of available model IDs from LM Studio's /models endpoint.
-        
-        Returns:
-            List of model IDs (empty list if query fails or no models available)
-        """
-        if not self.api_base:
-            return []
-        
-        try:
-            import json
-            import urllib.error
-            import urllib.request
 
-            # Query LM Studio's /models endpoint (OpenAI-compatible)
-            models_url = f"{self.api_base.rstrip('/')}/models"
-            req = urllib.request.Request(
-                models_url, headers={"Content-Type": "application/json"}, method="GET"
+@dataclass
+class OpenAIAPIConfig(OpenAICompatibleConfig):
+    """
+    Configuration for any OpenAI-compatible local/remote endpoint.
+
+    Use this for llama.cpp, llama-swap, vLLM, Tabby, or any server that
+    speaks the OpenAI REST API but is **not** LM Studio.
+    LiteLLM routes these calls via the ``openai/`` prefix.
+    """
+
+    provider_name: str = "openai_api"
+    _litellm_prefix: ClassVar[str] = "openai"
+
+
+@dataclass
+class LMStudioConfig(OpenAICompatibleConfig):
+    """
+    Configuration for LM Studio provider.
+
+    LM Studio uses the official ``lm_studio/`` prefix in LiteLLM with
+    ``LM_STUDIO_API_BASE`` and optional ``LM_STUDIO_API_KEY`` environment
+    variables.
+    """
+
+    provider_name: str = "lm_studio"
+    _litellm_prefix: ClassVar[str] = "lm_studio"
+
+    def __post_init__(self) -> None:
+        """Strip lm_studio/ or legacy openai/ prefix from model name."""
+        # Strip backward-compat openai/ prefix before super strips lm_studio/
+        if self.default_model:
+            self.default_model = self._strip_provider_prefix(
+                self.default_model, "openai/"
             )
+        super().__post_init__()
 
-            with urllib.request.urlopen(req, timeout=5) as response:
-                data = json.loads(response.read().decode())
-                return [model.get("id") for model in data.get("data", [])]
-        except Exception:
-            # Network error, JSON decode error, or other error - return empty list
-            return []
+    def sanitize_model_name(self, model: str) -> str:
+        """Strip lm_studio/ or legacy openai/ prefix, then re-add lm_studio/."""
+        base_model = self._strip_provider_prefix(model, "lm_studio/")
+        base_model = self._strip_provider_prefix(base_model, "openai/")
+        return f"lm_studio/{base_model}"
 
-    def _validate_model(self) -> Tuple[bool, Optional[str]]:
-        """
-        Validate the model by querying LM Studio's /models endpoint directly.
-
-        LM Studio models are dynamically loaded locally and may not be in
-        LiteLLM's model registry, so we validate against the actual LM Studio API.
-
-        Returns:
-            Tuple of (model_valid: bool, model_issue: Optional[str])
-        """
-        if not self.default_model:
-            return True, None
-
-        if not self.api_base:
-            # Can't validate without API base
-            return True, None
-
-        available_models = self._get_available_models()
-
-        if self.default_model in available_models:
-            return True, None
-        else:
-            if available_models:
-                available_str = ", ".join(available_models[:5]) + (
-                    "..." if len(available_models) > 5 else ""
-                )
-                issue = (
-                    f"Model '{self.default_model}' not found in LM Studio. "
-                    f"Available models: {available_str}"
-                )
-            else:
-                issue = "No models found in LM Studio"
-            return False, issue
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "LMStudioConfig":
+        """Create LMStudioConfig, stripping lm_studio/ or legacy openai/ prefix."""
+        default_model = data.get("default_model") or ""
+        for prefix in ("lm_studio/", "openai/"):
+            if default_model.startswith(prefix):
+                default_model = default_model[len(prefix) :]
+                break
+        return cls(
+            api_key=data.get("api_key"),
+            api_base=data.get("api_base"),
+            api_version=data.get("api_version"),
+            default_model=default_model or None,
+        )
 
 
 def get_provider_class(name: str) -> Type[ProviderConfig]:
@@ -754,6 +787,7 @@ def get_provider_class(name: str) -> Type[ProviderConfig]:
         "azure_openai": AzureOpenAIConfig,
         "ollama": OllamaConfig,
         "lm_studio": LMStudioConfig,
+        "openai_api": OpenAIAPIConfig,
         "mistral": MistralConfig,
     }
 
@@ -780,7 +814,10 @@ class LLMConfig:
 
     def __post_init__(self) -> None:
         """Validate that default_provider exists in providers if set."""
-        if self.default_provider is not None and self.default_provider not in self.providers:
+        if (
+            self.default_provider is not None
+            and self.default_provider not in self.providers
+        ):
             logger.warning(
                 f"Default provider '{self.default_provider}' is not configured in providers. "
                 f"Available providers: {list(self.providers.keys()) if self.providers else 'none'}"

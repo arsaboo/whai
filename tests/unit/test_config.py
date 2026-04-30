@@ -544,7 +544,7 @@ def test_mcp_prefs_disabled():
 
 def test_whai_config_mcp_defaults():
     """WhaiConfig defaults to MCP enabled when [mcp] section is absent."""
-    from whai.configuration.user_config import LLMConfig, RolesConfig, WhaiConfig
+    from whai.configuration.user_config import WhaiConfig
 
     whai_cfg = WhaiConfig.from_dict({
         "llm": {"default_provider": "openai", "openai": {"api_key": "k", "default_model": "m"}},
@@ -579,3 +579,192 @@ def test_whai_config_mcp_to_dict_always_present():
         assert d["mcp"] == {"enabled": enabled}
 
 
+
+# ============================================================================
+# OpenAICompatibleConfig / OpenAIAPIConfig tests
+# ============================================================================
+
+
+def test_openai_api_config_basic():
+    """OpenAIAPIConfig accepts api_base and default_model."""
+    from whai.configuration.user_config import OpenAIAPIConfig
+
+    cfg = OpenAIAPIConfig(api_base="http://localhost:8080/v1", default_model="llama3")
+    assert cfg.provider_name == "openai_api"
+    assert cfg.default_model == "llama3"
+    assert cfg.api_base == "http://localhost:8080/v1"
+    assert cfg.api_key is None
+
+
+def test_openai_api_config_strips_prefix_post_init():
+    """OpenAIAPIConfig strips 'openai/' prefix from default_model."""
+    from whai.configuration.user_config import OpenAIAPIConfig
+
+    cfg = OpenAIAPIConfig(api_base="http://localhost:8080/v1", default_model="openai/llama3")
+    assert cfg.default_model == "llama3"
+
+
+def test_openai_api_config_litellm_model_name():
+    """_get_litellm_model_name returns 'openai/<model>'."""
+    from whai.configuration.user_config import OpenAIAPIConfig
+
+    cfg = OpenAIAPIConfig(api_base="http://localhost:8080/v1", default_model="llama3")
+    assert cfg._get_litellm_model_name() == "openai/llama3"
+
+
+def test_openai_api_config_sanitize_model_name():
+    """sanitize_model_name adds 'openai/' prefix, stripping any existing one."""
+    from whai.configuration.user_config import OpenAIAPIConfig
+
+    cfg = OpenAIAPIConfig(api_base="http://localhost:8080/v1", default_model="llama3")
+    assert cfg.sanitize_model_name("llama3") == "openai/llama3"
+    assert cfg.sanitize_model_name("openai/llama3") == "openai/llama3"
+
+
+def test_openai_api_config_get_summary_fields():
+    """get_summary_fields includes model and api_base; key only when present."""
+    from whai.configuration.user_config import OpenAIAPIConfig
+
+    cfg_no_key = OpenAIAPIConfig(api_base="http://localhost:8080/v1", default_model="llama3")
+    fields = cfg_no_key.get_summary_fields()
+    assert fields["model"] == "llama3"
+    assert fields["api_base"] == "http://localhost:8080/v1"
+    assert "key" not in fields
+
+    cfg_with_key = OpenAIAPIConfig(
+        api_base="http://localhost:8080/v1", default_model="llama3", api_key="myapikey123"
+    )
+    fields_key = cfg_with_key.get_summary_fields()
+    assert "key" in fields_key
+    assert "myapikey" in fields_key["key"]
+
+
+def test_openai_api_config_requires_api_base():
+    """OpenAIAPIConfig raises when api_base is missing."""
+    from whai.configuration.user_config import InvalidProviderConfigError, OpenAIAPIConfig
+
+    with pytest.raises(InvalidProviderConfigError, match="api_base"):
+        OpenAIAPIConfig(default_model="llama3")
+
+
+def test_openai_api_config_requires_default_model():
+    """OpenAIAPIConfig raises when default_model is missing."""
+    from whai.configuration.user_config import InvalidProviderConfigError, OpenAIAPIConfig
+
+    with pytest.raises(InvalidProviderConfigError, match="default_model"):
+        OpenAIAPIConfig(api_base="http://localhost:8080/v1")
+
+
+def test_openai_api_config_from_dict():
+    """from_dict creates OpenAIAPIConfig and strips openai/ prefix."""
+    from whai.configuration.user_config import OpenAIAPIConfig
+
+    cfg = OpenAIAPIConfig.from_dict({
+        "api_base": "http://localhost:8080/v1",
+        "default_model": "openai/llama3",
+        "api_key": "tok",
+    })
+    assert cfg.default_model == "llama3"
+    assert cfg.api_base == "http://localhost:8080/v1"
+    assert cfg.api_key == "tok"
+
+
+def test_openai_api_config_from_dict_no_prefix():
+    """from_dict works when default_model has no prefix."""
+    from whai.configuration.user_config import OpenAIAPIConfig
+
+    cfg = OpenAIAPIConfig.from_dict({
+        "api_base": "http://localhost:8080/v1",
+        "default_model": "llama3",
+    })
+    assert cfg.default_model == "llama3"
+
+
+def test_openai_api_config_to_dict_round_trip(tmp_path, monkeypatch):
+    """OpenAIAPIConfig survives a save/load round-trip."""
+    from whai.configuration import user_config as config
+    from whai.configuration.user_config import (
+        LLMConfig,
+        OpenAIAPIConfig,
+        RolesConfig,
+        WhaiConfig,
+    )
+
+    monkeypatch.setattr(config, "get_config_dir", lambda: tmp_path)
+
+    whai_cfg = WhaiConfig(
+        llm=LLMConfig(
+            default_provider="openai_api",
+            providers={
+                "openai_api": OpenAIAPIConfig(
+                    api_base="http://localhost:8080/v1",
+                    default_model="llama3",
+                    api_key="secret-key",
+                )
+            },
+        ),
+        roles=RolesConfig(),
+    )
+    config.save_config(whai_cfg)
+
+    loaded = config.load_config()
+    assert loaded.llm.default_provider == "openai_api"
+    provider = loaded.llm.get_provider("openai_api")
+    assert provider is not None
+    assert provider.default_model == "llama3"
+    assert provider.api_base == "http://localhost:8080/v1"
+    assert provider.api_key == "secret-key"
+
+
+def test_get_provider_class_openai_api():
+    """get_provider_class returns OpenAIAPIConfig for 'openai_api'."""
+    from whai.configuration.user_config import OpenAIAPIConfig, get_provider_class
+
+    cls = get_provider_class("openai_api")
+    assert cls is OpenAIAPIConfig
+
+
+# ============================================================================
+# LMStudioConfig backward-compat tests (unchanged behavior after refactor)
+# ============================================================================
+
+
+def test_lm_studio_config_strips_lm_studio_prefix():
+    """LMStudioConfig still strips lm_studio/ prefix (regression)."""
+    from whai.configuration.user_config import LMStudioConfig
+
+    cfg = LMStudioConfig(api_base="http://localhost:1234/v1", default_model="lm_studio/llama3")
+    assert cfg.default_model == "llama3"
+
+
+def test_lm_studio_config_strips_openai_prefix_compat():
+    """LMStudioConfig strips legacy openai/ prefix for backward compatibility."""
+    from whai.configuration.user_config import LMStudioConfig
+
+    cfg = LMStudioConfig(api_base="http://localhost:1234/v1", default_model="openai/llama3")
+    assert cfg.default_model == "llama3"
+
+
+def test_lm_studio_config_litellm_prefix():
+    """LMStudioConfig uses lm_studio/ prefix, not openai/."""
+    from whai.configuration.user_config import LMStudioConfig
+
+    cfg = LMStudioConfig(api_base="http://localhost:1234/v1", default_model="llama3")
+    assert cfg._get_litellm_model_name() == "lm_studio/llama3"
+    assert cfg.sanitize_model_name("llama3") == "lm_studio/llama3"
+    assert cfg.sanitize_model_name("lm_studio/llama3") == "lm_studio/llama3"
+    assert cfg.sanitize_model_name("openai/llama3") == "lm_studio/llama3"
+
+
+def test_lm_studio_from_dict_strips_both_prefixes():
+    """LMStudioConfig.from_dict strips lm_studio/ and legacy openai/ prefix."""
+    from whai.configuration.user_config import LMStudioConfig
+
+    cfg1 = LMStudioConfig.from_dict({"api_base": "http://localhost:1234/v1", "default_model": "lm_studio/llama3"})
+    assert cfg1.default_model == "llama3"
+
+    cfg2 = LMStudioConfig.from_dict({"api_base": "http://localhost:1234/v1", "default_model": "openai/llama3"})
+    assert cfg2.default_model == "llama3"
+
+    cfg3 = LMStudioConfig.from_dict({"api_base": "http://localhost:1234/v1", "default_model": "llama3"})
+    assert cfg3.default_model == "llama3"

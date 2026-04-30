@@ -5,7 +5,6 @@ These tests validate whai behavior on different platforms: WSL, macOS, Windows.
 
 import os
 import platform
-import shutil
 import subprocess
 import sys
 import tempfile

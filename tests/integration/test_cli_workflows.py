@@ -398,7 +398,6 @@ def test_real_command_execution():
 
 def test_provider_precedence_cli_over_role(mock_llm_text_only, tmp_path, monkeypatch):
     """Test that CLI provider override takes precedence over role provider."""
-    from pathlib import Path
     from unittest.mock import patch
 
     from whai.configuration import user_config as config
@@ -477,7 +476,6 @@ You are a custom assistant.
 
 def test_provider_from_role_metadata(mock_llm_text_only, tmp_path, monkeypatch):
     """Test that role provider is used when no CLI override is provided."""
-    from pathlib import Path
     from unittest.mock import patch
 
     from whai.configuration import user_config as config

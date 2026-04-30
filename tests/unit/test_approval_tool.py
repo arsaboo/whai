@@ -2,7 +2,6 @@
 
 from unittest.mock import patch
 
-import pytest
 
 from whai.interaction.approval import approve_tool
 

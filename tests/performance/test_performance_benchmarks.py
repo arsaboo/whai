@@ -8,8 +8,6 @@ They're meant to catch major performance regressions, not micro-optimizations.
 """
 
 import time
-from pathlib import Path
-from tempfile import NamedTemporaryFile
 from unittest.mock import MagicMock, patch
 
 import pytest

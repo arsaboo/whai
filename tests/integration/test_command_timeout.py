@@ -5,7 +5,6 @@ and provides clear, actionable error messages to users.
 """
 
 import json
-import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest

@@ -10,9 +10,7 @@ This test simulates a complete whai shell session:
 
 import os
 import subprocess
-import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -102,8 +100,8 @@ def _run_commands_in_recorded_shell(commands: list[str], cwd: Path, log_path: Pa
         cmd_sequence = "; ".join(commands)
         
         if variant == "util-linux":
-            # util-linux: script -qf log -c "commands"
-            cmd = [script_bin, "-qf", str(log_path), "-c", cmd_sequence]
+            # util-linux: script -qf log -- sh -lc "commands"
+            cmd = [script_bin, "-qf", str(log_path), "--", "sh", "-lc", cmd_sequence]
         elif variant == "bsd":
             # BSD: script -qF log sh -c "commands" (shell must be specified)
             cmd = [script_bin, "-qF", str(log_path), "sh", "-c", cmd_sequence]
@@ -252,7 +250,6 @@ The end."""
     
     # Verify the whai command itself is NOT in context when excluded
     context_lines = final_context.split("\n")
-    whai_command_lines = [line for line in context_lines if "whai tell me a story" in line.lower()]
     # The exclusion should work - the command should be removed from the context
     
     # Verify no excessive whitespace or polluting characters

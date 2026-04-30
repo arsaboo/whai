@@ -32,7 +32,7 @@ def test_role_precedence_cli_flag(tmp_path, monkeypatch):
         mock_llm.return_value.choices = []
         mock_llm.return_value.usage = type("obj", (object,), {"total_tokens": 0})
 
-        result = runner.invoke(
+        runner.invoke(
             app,
             ["test query", "--role", "custom", "--no-context"],
             env={"WHAI_ROLE": "default"},

@@ -1,7 +1,6 @@
 """Tests for MCP configuration dataclasses."""
 
 import json
-from pathlib import Path
 
 import pytest
 

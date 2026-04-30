@@ -4,7 +4,6 @@ These tests validate that whai handles errors gracefully and shows
 helpful messages to users rather than crashing.
 """
 
-import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest

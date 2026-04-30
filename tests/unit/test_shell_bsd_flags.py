@@ -1,4 +1,3 @@
-import builtins
 from pathlib import Path
 from typing import List
 
@@ -6,7 +5,6 @@ import platform
 import shutil
 import subprocess
 
-import pytest
 
 from whai.shell.session import launch_shell_session
 

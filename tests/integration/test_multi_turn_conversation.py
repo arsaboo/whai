@@ -4,11 +4,9 @@ These tests validate that whai maintains context across multiple interactions
 in a session, allowing for conversational back-and-forth.
 """
 
-import os
 import platform
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 

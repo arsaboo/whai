@@ -1,6 +1,5 @@
 """Tests for MCP manager using real MCP servers."""
 
-import asyncio
 
 import pytest
 

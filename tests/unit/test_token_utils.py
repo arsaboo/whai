@@ -1,6 +1,5 @@
 """Tests for token truncation utilities."""
 
-import pytest
 
 from whai.llm import token_utils
 

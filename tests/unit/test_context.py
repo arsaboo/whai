@@ -1,12 +1,8 @@
 """Tests for context module."""
 
-import json
 import os
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from whai import context
 from whai.context.history import (

@@ -1,9 +1,7 @@
 """Tests for recorded shell session context capture."""
 
-import os
 from pathlib import Path
 
-import pytest
 
 from whai.context.capture import get_context
 from whai.context.session_reader import read_session_context
@@ -57,7 +55,6 @@ def test_session_log_context_from_env(tmp_path, monkeypatch):
 
 def test_session_log_context_no_log_available(monkeypatch):
     """Test session log context returns None when no log is available."""
-    from pathlib import Path
     # Mock get_config_dir in all places it's used
     def mock_get_config_dir():
         return Path("/nonexistent/path") / "whai"

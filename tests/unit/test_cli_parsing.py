@@ -244,7 +244,7 @@ def test_timeout_flag_parsing():
         mock_llm.return_value = mock_response
         
         with patch("builtins.input", return_value="a"):  # Approve command
-            result = runner.invoke(app, ["--timeout", "30", "--no-context", "run", "this", "command"])
+            runner.invoke(app, ["--timeout", "30", "--no-context", "run", "this", "command"])
             
             # Verify timeout was passed to execute_command
             if mock_exec.called:

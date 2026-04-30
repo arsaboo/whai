@@ -33,6 +33,7 @@ Features:
 - [x] Tmux empty window no warning
 - [x] -vv flag
 - [x] lm_studio and gemini prefixes
+- [x] Generic OpenAI-compatible provider support
 - [x] Whai shell
 - [x] Better performance logging
 - [x] More context

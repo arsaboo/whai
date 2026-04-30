@@ -9,6 +9,12 @@ When ready to publish, change to version header: `## vX.Y.Z` (where X.Y.Z is you
 
 ## In Progress
 
+
+## v0.12.0
+
+[2026-04-30] [feature] [llm]: add generic openai-compatible provider support (openai_api) for local/remote endpoints (llama.cpp, vLLM, etc.)
+[2026-04-30] [test] [infra]: add python-dotenv support to load local .env files; pin LiteLLM to 1.79.0 for security
+[2026-04-30] [test] [robustness]: improve tmux and MCP integration test reliability; clean up unused imports and variables across the test suite
 [2026-03-19] [change] [core]: simplify codebase by removing dead code and duplicated logic across CLI, context capture, MCP tool description lookup, UI error output, and command execution paths
 [2026-03-06] [feature] [cli]: add `--command-only` mode that generates a single shell command without running it, suitable for keybindings; output contains only the command line on stdout with no Rich UI
 [2026-03-06] [feature] [prompt]: add dedicated `system_prompt_command_only` template for command-only mode, ensuring the model responds only via a single execute_shell tool call with no natural-language explanation
@@ -274,4 +280,3 @@ When ready to publish, change to version header: `## vX.Y.Z` (where X.Y.Z is you
 [2025-10-30] [fix] [ui]: wrap long proposed commands for readability
 [2025-10-30] [security] [docs]: document API key security best practices
 [2025-10-30] [feature] [core]: initial implementation of core modules, role system, streaming, and tests
-

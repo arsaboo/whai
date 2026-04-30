@@ -18,6 +18,16 @@ from whai.utils import PerformanceLogger
 
 
 @pytest.fixture(scope="session", autouse=True)
+def load_env_file():
+    """Load local .env file into environment for API tests (if present)."""
+    from pathlib import Path
+    from dotenv import load_dotenv
+
+    # Load .env from repository root (tests folder's parent)
+    load_dotenv(dotenv_path=Path(__file__).parents[1] / ".env", override=False)
+
+
+@pytest.fixture(scope="session", autouse=True)
 def plain_mode_for_tests():
     """Force plain mode (no Rich styling) for all tests."""
     original = os.environ.get("WHAI_PLAIN")
@@ -33,7 +43,7 @@ def plain_mode_for_tests():
 def test_mode_for_config():
     """Enable test mode for config loading."""
     from whai.constants import ENV_WHAI_TEST_MODE
-    
+
     original = os.environ.get(ENV_WHAI_TEST_MODE)
     os.environ[ENV_WHAI_TEST_MODE] = "1"
     yield
@@ -46,14 +56,16 @@ def test_mode_for_config():
 def pytest_configure(config):
     """Configure pytest-anyio to only use asyncio backend."""
     os.environ.setdefault("ANYIO_BACKEND", "asyncio")
-    
+
     # Try to configure pytest-anyio plugin directly
     try:
         import anyio
+
         # Force asyncio backend
         anyio._backend = "asyncio"
     except (ImportError, AttributeError):
         pass
+
 
 def pytest_collection_modifyitems(config, items):
     """Skip trio backend tests."""
@@ -65,7 +77,7 @@ def pytest_collection_modifyitems(config, items):
                 # Skip this test variant
                 skip_marker = pytest.mark.skip(reason="trio backend not available")
                 item.add_marker(skip_marker)
-        
+
         # Also check for anyio parametrization in the test name
         if "[trio]" in item.name:
             skip_marker = pytest.mark.skip(reason="trio backend not available")
@@ -80,20 +92,20 @@ def create_test_config(
 ) -> WhaiConfig:
     """
     Helper function to create a test WhaiConfig object.
-    
+
     Args:
         default_provider: Default provider name.
         default_model: Default model name.
         api_key: API key for the default provider.
         providers: Optional dict of provider configs to add.
-    
+
     Returns:
         WhaiConfig instance for testing.
     """
     from whai.constants import DEFAULT_PROVIDER, DEFAULT_ROLE_NAME
-    
+
     provider_configs = {}
-    
+
     # Add default provider
     if default_provider == "openai":
         provider_configs["openai"] = OpenAIConfig(
@@ -115,11 +127,11 @@ def create_test_config(
             api_key=api_key,
             default_model=default_model,
         )
-    
+
     # Add any additional providers
     if providers:
         provider_configs.update(providers)
-    
+
     return WhaiConfig(
         llm=LLMConfig(
             default_provider=default_provider or DEFAULT_PROVIDER,
@@ -132,15 +144,13 @@ def create_test_config(
 def create_test_perf_logger() -> PerformanceLogger:
     """
     Helper function to create a test PerformanceLogger instance.
-    
+
     Returns:
         PerformanceLogger instance for testing.
     """
     perf_logger = PerformanceLogger("Test")
     perf_logger.start()
     return perf_logger
-
-
 
 
 @pytest.fixture(scope="session")

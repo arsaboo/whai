@@ -2500,12 +2500,13 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
+    { name = "python-dotenv" },
     { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "litellm", specifier = ">=1.0.0" },
+    { name = "litellm", specifier = "==1.79.0" },
     { name = "mcp", specifier = ">=1.22.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rich", specifier = ">=13.7.0" },
@@ -2522,6 +2523,7 @@ dev = [
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
     { name = "pytest-mock", specifier = ">=3.14.1" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "ruff", specifier = ">=0.14.3" },
 ]
 

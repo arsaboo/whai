@@ -35,6 +35,9 @@ Thumbs.db
 # Project specific
 *.log
 .whai/
+AGENTS.md
+CLAUDE.md
+.pi/
 
 # Distribution
 build/
